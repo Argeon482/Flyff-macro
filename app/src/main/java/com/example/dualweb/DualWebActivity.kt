@@ -627,12 +627,12 @@ private fun DualWebFullscreenWorkspace(
                     DualLayoutMode.SPLIT_50_50 -> {
                         if (isLandscape) {
                             val halfW = totalW / 2
-                            acct1Bounds = PaneBounds(0.dp, 0.dp, halfW, totalH)
-                            acct2Bounds = PaneBounds(halfW, 0.dp, totalW - halfW, totalH)
+                            acct2Bounds = PaneBounds(0.dp, 0.dp, halfW, totalH)
+                            acct1Bounds = PaneBounds(halfW, 0.dp, totalW - halfW, totalH)
                         } else {
                             val halfH = totalH / 2
-                            acct1Bounds = PaneBounds(0.dp, 0.dp, totalW, halfH)
-                            acct2Bounds = PaneBounds(0.dp, halfH, totalW, totalH - halfH)
+                            acct2Bounds = PaneBounds(0.dp, 0.dp, totalW, halfH)
+                            acct1Bounds = PaneBounds(0.dp, halfH, totalW, totalH - halfH)
                         }
                         acct1Z = 1f
                         acct2Z = 1f
