@@ -95,7 +95,6 @@ import com.example.model.DelayStep
 import com.example.model.IfColorStep
 import com.example.model.IfImageStep
 import com.example.model.IfVariableStep
-import com.example.model.InputInjectionMode
 import com.example.model.JumpStep
 import com.example.model.KeyCategory
 import com.example.model.KeyPressStep
@@ -112,7 +111,6 @@ import com.example.model.StopStep
 import com.example.model.SwipeStep
 import com.example.model.SystemKeyAction
 import com.example.model.TapStep
-import com.example.model.TouchGuardPolicy
 import com.example.model.VarComparator
 import com.example.model.VarOperation
 import com.example.model.WebViewTarget
@@ -1146,7 +1144,6 @@ fun OverlayStudioWindow(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun OverlayMacroSettings(
     macro: MacroDefinition,
@@ -1156,8 +1153,6 @@ private fun OverlayMacroSettings(
     var target by remember(macro) { mutableStateOf(macro.targetAppLabel) }
     var loops by remember(macro) { mutableStateOf(macro.loopCount.toString()) }
     var poll by remember(macro) { mutableStateOf(macro.pollingIntervalMs.toString()) }
-    var injectionMode by remember(macro) { mutableStateOf(macro.injectionMode) }
-    var touchGuardPolicy by remember(macro) { mutableStateOf(macro.touchGuardPolicy) }
 
     Column(
         modifier = Modifier
@@ -1167,33 +1162,9 @@ private fun OverlayMacroSettings(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         OverlayTextField("Macro Name", name, { name = it })
-        OverlayTextField("Target App Label", target, { target = it })
+        OverlayTextField("Target Label", target, { target = it })
         OverlayTextField("Passes (0 = Infinite)", loops, { loops = it.filter(Char::isDigit) }, numeric = true)
         OverlayTextField("Vision Poll (ms)", poll, { poll = it.filter(Char::isDigit) }, numeric = true)
-
-        Text("Pointer Injection Source", color = StudioCyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            InputInjectionMode.entries.forEach { mode ->
-                FilterChip(
-                    selected = injectionMode == mode,
-                    onClick = { injectionMode = mode },
-                    label = { Text(mode.displayLabel, fontSize = 12.sp) }
-                )
-            }
-        }
-        Text(injectionMode.shortDesc, color = StudioMuted, fontSize = 11.sp)
-
-        Text("User Touch Guard", color = StudioAmber, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            TouchGuardPolicy.entries.forEach { policy ->
-                FilterChip(
-                    selected = touchGuardPolicy == policy,
-                    onClick = { touchGuardPolicy = policy },
-                    label = { Text(policy.displayLabel, fontSize = 12.sp) }
-                )
-            }
-        }
-        Text(touchGuardPolicy.shortDesc, color = StudioMuted, fontSize = 11.sp)
 
         Button(
             onClick = {
@@ -1202,9 +1173,7 @@ private fun OverlayMacroSettings(
                         name = name.trim().ifBlank { macro.name },
                         targetAppLabel = target.trim().ifBlank { macro.targetAppLabel },
                         loopCount = loops.toIntOrNull() ?: macro.loopCount,
-                        pollingIntervalMs = (poll.toLongOrNull() ?: macro.pollingIntervalMs).coerceAtLeast(50L),
-                        injectionMode = injectionMode,
-                        touchGuardPolicy = touchGuardPolicy
+                        pollingIntervalMs = (poll.toLongOrNull() ?: macro.pollingIntervalMs).coerceAtLeast(50L)
                     )
                 )
             },

@@ -80,7 +80,6 @@ import com.example.model.DelayStep
 import com.example.model.IfColorStep
 import com.example.model.IfImageStep
 import com.example.model.IfVariableStep
-import com.example.model.InputInjectionMode
 import com.example.model.JumpStep
 import com.example.model.KeyPressStep
 import com.example.model.LoopEndStep
@@ -94,7 +93,6 @@ import com.example.model.SetVariableStep
 import com.example.model.StopStep
 import com.example.model.SwipeStep
 import com.example.model.TapStep
-import com.example.model.TouchGuardPolicy
 import com.example.model.WebViewTarget
 import com.example.model.stepWebViewTarget
 import com.example.model.withEnabled
@@ -924,7 +922,6 @@ private fun StepNodeCard(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun MacroSettingsDialog(
     macro: MacroDefinition,
@@ -935,8 +932,6 @@ private fun MacroSettingsDialog(
     var target by remember(macro) { mutableStateOf(macro.targetAppLabel) }
     var loopCount by remember(macro) { mutableStateOf(macro.loopCount.toString()) }
     var pollingMs by remember(macro) { mutableStateOf(macro.pollingIntervalMs.toString()) }
-    var injectionMode by remember(macro) { mutableStateOf(macro.injectionMode) }
-    var touchGuardPolicy by remember(macro) { mutableStateOf(macro.touchGuardPolicy) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -954,7 +949,7 @@ private fun MacroSettingsDialog(
                 OutlinedTextField(
                     value = target,
                     onValueChange = { target = it },
-                    label = { Text("Target App Label") },
+                    label = { Text("Target Label") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -974,36 +969,6 @@ private fun MacroSettingsDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Text("Pointer Injection Source", style = MaterialTheme.typography.labelMedium, color = ElectricCyan)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    InputInjectionMode.entries.forEach { mode ->
-                        FilterChip(
-                            selected = injectionMode == mode,
-                            onClick = { injectionMode = mode },
-                            label = { Text(mode.displayLabel) }
-                        )
-                    }
-                }
-                Text(
-                    text = injectionMode.shortDesc,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextSecondary
-                )
-                Text("User Touch Guard", style = MaterialTheme.typography.labelMedium, color = AmberLogic)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    TouchGuardPolicy.entries.forEach { policy ->
-                        FilterChip(
-                            selected = touchGuardPolicy == policy,
-                            onClick = { touchGuardPolicy = policy },
-                            label = { Text(policy.displayLabel) }
-                        )
-                    }
-                }
-                Text(
-                    text = touchGuardPolicy.shortDesc,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextSecondary
-                )
             }
         },
         confirmButton = {
@@ -1012,11 +977,9 @@ private fun MacroSettingsDialog(
                     onConfirm(
                         macro.copy(
                             name = name.trim().ifBlank { macro.name },
-                            targetAppLabel = target.trim().ifBlank { "Any Screen" },
+                            targetAppLabel = target.trim().ifBlank { "Dual Flyff" },
                             loopCount = loopCount.toIntOrNull() ?: macro.loopCount,
-                            pollingIntervalMs = (pollingMs.toLongOrNull() ?: macro.pollingIntervalMs).coerceAtLeast(50L),
-                            injectionMode = injectionMode,
-                            touchGuardPolicy = touchGuardPolicy
+                            pollingIntervalMs = (pollingMs.toLongOrNull() ?: macro.pollingIntervalMs).coerceAtLeast(50L)
                         )
                     )
                 },

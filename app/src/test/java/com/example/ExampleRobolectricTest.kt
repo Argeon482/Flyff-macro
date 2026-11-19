@@ -6,14 +6,13 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
-import android.graphics.RectF
-import android.view.InputDevice
 import android.view.KeyEvent
-import android.view.MotionEvent
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.AppDatabase
 import com.example.data.MacroRepository
+import com.example.dualweb.DualWebInputBridge
+import com.example.dualweb.DualWebMacroDelegate
 import com.example.engine.ExecutionStatus
 import com.example.engine.MacroInterpreter
 import com.example.model.BranchAction
@@ -23,7 +22,6 @@ import com.example.model.IfVariableStep
 import com.example.model.InputInjectionMode
 import com.example.model.JumpStep
 import com.example.model.KeyPressStep
-import com.example.model.KeyboardKeyCatalog
 import com.example.model.LoopEndStep
 import com.example.model.LoopStartStep
 import com.example.model.MacroCloner
@@ -33,17 +31,16 @@ import com.example.model.ScriptClipboard
 import com.example.model.ScriptClipboardItem
 import com.example.model.SetVariableStep
 import com.example.model.StopStep
+import com.example.model.TapStep
 import com.example.model.TouchGuardPolicy
 import com.example.model.VarComparator
 import com.example.model.VarOperation
+import com.example.model.WebViewTarget
 import com.example.service.OverlayCoordinator
 import com.example.service.PickerMode
 import com.example.service.PickerRequest
 import com.example.service.PickerResult
-import com.example.shizuku.LiveTouchSnapshot
-import com.example.shizuku.ShizukuInputBridge
 import com.example.ui.components.computeTemplateCropRect
-import com.example.ui.screens.SandboxMultiPointerRouter
 import com.example.vision.ScreenDetector
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -137,10 +134,9 @@ class ExampleRobolectricTest {
             .allowMainThreadQueries()
             .build()
         val repo = MacroRepository(context, db.macroDao())
-        val bridge = ShizukuInputBridge(context)
         val detector = ScreenDetector(context)
         val coordinator = OverlayCoordinator()
-        val interpreter = MacroInterpreter(repo, bridge, detector, coordinator)
+        val interpreter = MacroInterpreter(repo, detector, coordinator)
 
         val loopId = "l1"
         val macro = MacroDefinition(
@@ -296,202 +292,103 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun bridgeDiagnosticsAndTouchGuard_trackCooperativeFingerAndOutsideTouch() {
+    fun interpreter_dispatchesPerStepAccount2AndAccount1ViaDualWebBridge() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val bridge = ShizukuInputBridge(context)
-        bridge.updateCooperativeFingerState(
-            isDown = true,
-            screenX = 240f,
-            screenY = 1600f,
-            downTime = 12345L,
-            deviceId = 4
-        )
-        val diag = bridge.diagnostics.value
-        assertTrue(diag.cooperativeFingerDown)
-        assertEquals(4, diag.physicalTouchDeviceId)
-        assertEquals(240f, diag.cooperativeFingerX, 0.01f)
-
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val repo = MacroRepository(context, db.macroDao())
+        val detector = ScreenDetector(context)
         val coordinator = OverlayCoordinator()
-        assertTrue(coordinator.msSinceLastUserTouch(5000L) > 10_000L)
-        coordinator.recordUserTouchActivity(4900L)
-        assertEquals(100L, coordinator.msSinceLastUserTouch(5000L))
-    }
+        val dualWebBridge = DualWebInputBridge()
 
-    @Test
-    fun sandboxRouter_routesPointerDownToTargetWhileJoystickDrags() {
-        var dragging = false
-        var cancelCount = 0
-        var targetHits = 0
-        var lastTool = ""
-        var coopDown = false
-        var coopPointerId = -1
-
-        val router = SandboxMultiPointerRouter(
-            onJoystickState = { isDragging, _, _, incCancel, _, _ ->
-                dragging = isDragging
-                if (incCancel) cancelCount++
-            },
-            onCooperativeFingerUpdate = { isDown, _, _, _, _, pointerId ->
-                coopDown = isDown
-                coopPointerId = pointerId
-            },
-            onTargetEvent = { _, _, toolLabel, _, countHit, _ ->
-                lastTool = toolLabel
-                if (countHit) targetHits++
+        val recorded = mutableListOf<String>()
+        val delegate = object : DualWebMacroDelegate {
+            override fun dispatchKey(
+                keyCode: Int,
+                holdMs: Long,
+                metaState: Int,
+                targetOverride: WebViewTarget
+            ): Boolean {
+                recorded += "KEY:$keyCode:${targetOverride.name}"
+                return true
             }
-        )
 
-        val targetRect = RectF(0f, 0f, 400f, 400f)
-        val joystickRect = RectF(0f, 420f, 400f, 820f)
-        val props0 = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_FINGER })
-        val coords0 = arrayOf(MotionEvent.PointerCoords().apply { x = 200f; y = 620f; pressure = 1f; size = 1f })
-
-        val down = MotionEvent.obtain(100L, 100L, MotionEvent.ACTION_DOWN, 1, props0, coords0, 0, 0, 1f, 1f, 4, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
-        router.handleTouchEvent(down, 0f, 0f, 0f, 0f, joystickRect, targetRect, "Co-Touch")
-        down.recycle()
-        assertTrue(dragging)
-        assertTrue(coopDown)
-        assertEquals(0, coopPointerId)
-        assertEquals(0, targetHits)
-
-        val propsDual = arrayOf(
-            MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_FINGER },
-            MotionEvent.PointerProperties().apply { id = 1; toolType = MotionEvent.TOOL_TYPE_FINGER }
-        )
-        val coordsDual = arrayOf(
-            MotionEvent.PointerCoords().apply { x = 210f; y = 630f; pressure = 1f; size = 1f },
-            MotionEvent.PointerCoords().apply { x = 200f; y = 200f; pressure = 1f; size = 1f }
-        )
-        val pDown = MotionEvent.obtain(
-            100L,
-            120L,
-            MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),
-            2,
-            propsDual,
-            coordsDual,
-            0,
-            0,
-            1f,
-            1f,
-            4,
-            0,
-            InputDevice.SOURCE_TOUCHSCREEN,
-            0
-        )
-        router.handleTouchEvent(pDown, 0f, 0f, 0f, 0f, joystickRect, targetRect, "Co-Touch")
-        pDown.recycle()
-
-        assertTrue(dragging)
-        assertEquals(0, cancelCount)
-        assertEquals(1, targetHits)
-        assertEquals("FINGER(P1)", lastTool)
-
-        val pUp = MotionEvent.obtain(
-            100L,
-            165L,
-            MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),
-            2,
-            propsDual,
-            coordsDual,
-            0,
-            0,
-            1f,
-            1f,
-            4,
-            0,
-            InputDevice.SOURCE_TOUCHSCREEN,
-            0
-        )
-        router.handleTouchEvent(pUp, 0f, 0f, 0f, 0f, joystickRect, targetRect, "Co-Touch")
-        pUp.recycle()
-
-        assertTrue(dragging)
-        assertEquals(0, cancelCount)
-        assertEquals(1, targetHits)
-    }
-
-    @Test
-    fun sandboxRouter_handlesKeyEventsDuringActiveJoystickDragWithoutCanceling() {
-        var dragging = false
-        var cancelCount = 0
-        var keyHits = 0
-        var coKeyWhileDraggingHits = 0
-        var lastKey = ""
-
-        val router = SandboxMultiPointerRouter(
-            onJoystickState = { isDragging, _, _, incCancel, _, _ ->
-                dragging = isDragging
-                if (incCancel) cancelCount++
-            },
-            onCooperativeFingerUpdate = { _, _, _, _, _, _ -> },
-            onTargetEvent = { _, _, _, _, _, _ -> },
-            onKeyEventReceived = { keyLabel, isDown, whileDragging ->
-                if (isDown) {
-                    keyHits++
-                    lastKey = keyLabel
-                    if (whileDragging) coKeyWhileDraggingHits++
-                }
+            override fun dispatchTap(
+                screenX: Float,
+                screenY: Float,
+                holdMs: Long,
+                jitterPx: Int,
+                targetOverride: WebViewTarget
+            ): Boolean {
+                recorded += "TAP:${screenX.toInt()},${screenY.toInt()}:${targetOverride.name}"
+                return true
             }
+
+            override fun dispatchSwipe(
+                startX: Float,
+                startY: Float,
+                endX: Float,
+                endY: Float,
+                durationMs: Long,
+                steps: Int,
+                targetOverride: WebViewTarget
+            ): Boolean = true
+
+            override fun describeTarget(targetOverride: WebViewTarget): String = targetOverride.name
+        }
+        dualWebBridge.attach(delegate)
+
+        val interpreter = MacroInterpreter(repo, detector, coordinator, dualWebBridge)
+        val macro = MacroDefinition(
+            id = "dual-web-routing-test",
+            name = "Dual Web Routing Test",
+            loopCount = 1,
+            steps = listOf(
+                KeyPressStep(
+                    label = "Buff A2",
+                    customKeyCode = KeyEvent.KEYCODE_1,
+                    keyLabel = "1",
+                    targetWebView = WebViewTarget.ACCOUNT_2
+                ),
+                TapStep(
+                    label = "Tap A1 Main",
+                    x = 320f,
+                    y = 1400f,
+                    targetWebView = WebViewTarget.ACCOUNT_1
+                ),
+                KeyPressStep(
+                    label = "Action A1 Main",
+                    customKeyCode = KeyEvent.KEYCODE_SPACE,
+                    keyLabel = "Space",
+                    targetWebView = WebViewTarget.ACCOUNT_1
+                )
+            )
         )
 
-        val targetRect = RectF(0f, 0f, 400f, 400f)
-        val joystickRect = RectF(0f, 420f, 400f, 820f)
-        val props0 = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_FINGER })
-        val coords0 = arrayOf(MotionEvent.PointerCoords().apply { x = 200f; y = 620f; pressure = 1f; size = 1f })
+        interpreter.start(macro)
+        var attempts = 0
+        while (interpreter.state.value.status == ExecutionStatus.RUNNING && attempts < 80) {
+            delay(40)
+            attempts++
+        }
 
-        val down = MotionEvent.obtain(100L, 100L, MotionEvent.ACTION_DOWN, 1, props0, coords0, 0, 0, 1f, 1f, 6, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
-        router.handleTouchEvent(down, 0f, 0f, 0f, 0f, joystickRect, targetRect, "Touch")
-        down.recycle()
+        assertEquals(ExecutionStatus.IDLE, interpreter.state.value.status)
+        assertEquals(
+            listOf(
+                "KEY:${KeyEvent.KEYCODE_1}:ACCOUNT_2",
+                "TAP:320,1400:ACCOUNT_1",
+                "KEY:${KeyEvent.KEYCODE_SPACE}:ACCOUNT_1"
+            ),
+            recorded
+        )
 
-        val keyDown = KeyEvent(150L, 150L, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_SPACE, 0)
-        assertTrue(router.handleKeyEvent(keyDown, KeyEvent.KEYCODE_SPACE))
-        // Duplicate dispatch with same downTime + keyCode should be deduplicated
-        assertTrue(router.handleKeyEvent(keyDown, KeyEvent.KEYCODE_SPACE))
-        val keyUp = KeyEvent(150L, 185L, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_SPACE, 0)
-        assertTrue(router.handleKeyEvent(keyUp, KeyEvent.KEYCODE_SPACE))
-
-        // Hardware volume key must always pass through unconsumed
-        val volUp = KeyEvent(200L, 200L, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_UP, 0)
-        assertFalse(router.handleKeyEvent(volUp, KeyEvent.KEYCODE_SPACE))
-
-        assertTrue(dragging)
-        assertEquals(0, cancelCount)
-        assertEquals(1, keyHits)
-        assertEquals(1, coKeyWhileDraggingHits)
-        assertEquals(KeyboardKeyCatalog.labelForKeyCode(KeyEvent.KEYCODE_SPACE), lastKey)
-    }
-
-    @Test
-    fun touchGuard_liveHoldAndYieldPolicies_respectFingerHoldAndCooldown() {
-        val holding = LiveTouchSnapshot(isHolding = true, msSinceLastActivity = 0L, source = "getevent")
-        val justReleased = LiveTouchSnapshot(isHolding = false, msSinceLastActivity = 20L, source = "getevent")
-        val settledFast = LiveTouchSnapshot(isHolding = false, msSinceLastActivity = 80L, source = "getevent")
-        val settledLong = LiveTouchSnapshot(isHolding = false, msSinceLastActivity = 400L, source = "getevent")
-
-        // OFF never yields
-        assertFalse(MacroInterpreter.shouldYieldForTouchGuard(TouchGuardPolicy.OFF, holding, 0L))
-
-        // LIVE_RELEASE yields while held or within 60ms debounce, then fires cleanly
-        assertTrue(MacroInterpreter.shouldYieldForTouchGuard(TouchGuardPolicy.LIVE_RELEASE, holding, 5_000L))
-        assertTrue(MacroInterpreter.shouldYieldForTouchGuard(TouchGuardPolicy.LIVE_RELEASE, justReleased, 5_000L))
-        assertFalse(MacroInterpreter.shouldYieldForTouchGuard(TouchGuardPolicy.LIVE_RELEASE, settledFast, 5_000L))
-
-        // YIELD_350MS holds regardless of stale outside timer while evdev reports holding, and waits minOf(live, outside) >= 350ms
-        assertTrue(MacroInterpreter.shouldYieldForTouchGuard(TouchGuardPolicy.YIELD_350MS, holding, 9_000L))
-        assertTrue(MacroInterpreter.shouldYieldForTouchGuard(TouchGuardPolicy.YIELD_350MS, settledFast, 9_000L))
-        assertTrue(MacroInterpreter.shouldYieldForTouchGuard(TouchGuardPolicy.YIELD_350MS, settledLong, 200L))
-        assertFalse(MacroInterpreter.shouldYieldForTouchGuard(TouchGuardPolicy.YIELD_350MS, settledLong, 360L))
-
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val bridge = ShizukuInputBridge(context)
-        bridge.updateCooperativeFingerState(true, 100f, 200f, 10L, 6, 0)
-        val snapDown = bridge.readLiveTouchSnapshot()
-        assertTrue(snapDown.isHolding)
-        assertEquals("sandbox", snapDown.source)
-
-        bridge.updateCooperativeFingerState(false, 0f, 0f, 0L, 6, 0)
-        val snapUp = bridge.readLiveTouchSnapshot()
-        assertFalse(snapUp.isHolding)
+        // Detaching Dual WebView should fail preflight cleanly with clear Dual Flyff message
+        dualWebBridge.detach(delegate)
+        interpreter.start(macro)
+        assertEquals(ExecutionStatus.ERROR, interpreter.state.value.status)
+        assertTrue(interpreter.state.value.errorMessage?.contains("Dual Flyff") == true)
+        db.close()
     }
 
     @Test
@@ -501,10 +398,9 @@ class ExampleRobolectricTest {
             .allowMainThreadQueries()
             .build()
         val repo = MacroRepository(context, db.macroDao())
-        val bridge = ShizukuInputBridge(context)
         val detector = ScreenDetector(context)
         val coordinator = OverlayCoordinator()
-        val interpreter = MacroInterpreter(repo, bridge, detector, coordinator)
+        val interpreter = MacroInterpreter(repo, detector, coordinator)
 
         val fnInner = MacroFunction(
             id = "fn-inner",

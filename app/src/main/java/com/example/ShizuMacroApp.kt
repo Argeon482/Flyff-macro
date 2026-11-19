@@ -11,7 +11,6 @@ import com.example.dualweb.DualWebInputBridge
 import com.example.engine.MacroInterpreter
 import com.example.model.ScriptClipboard
 import com.example.service.OverlayCoordinator
-import com.example.shizuku.ShizukuInputBridge
 import com.example.vision.ScreenDetector
 
 class ShizuMacroApp : Application() {
@@ -19,8 +18,6 @@ class ShizuMacroApp : Application() {
     lateinit var database: AppDatabase
         private set
     lateinit var repository: MacroRepository
-        private set
-    lateinit var shizukuBridge: ShizukuInputBridge
         private set
     lateinit var screenDetector: ScreenDetector
         private set
@@ -41,25 +38,21 @@ class ShizuMacroApp : Application() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 WebView.setDataDirectorySuffix(DualWebConstants.ACCT2_DATA_DIR_SUFFIX)
             }
-            // Keep the isolated :acct2 process lightweight; do not touch main-process Room DB or Shizuku listeners.
+            // Keep the isolated :acct2 process lightweight; do not touch main-process Room DB.
             return
         }
 
         database = AppDatabase.getInstance(this)
         repository = MacroRepository(this, database.macroDao())
-        shizukuBridge = ShizukuInputBridge(this)
         screenDetector = ScreenDetector(this)
         overlayCoordinator = OverlayCoordinator()
         scriptClipboard = ScriptClipboard()
         dualWebInputBridge = DualWebInputBridge()
         interpreter = MacroInterpreter(
             repository = repository,
-            shizukuBridge = shizukuBridge,
             screenDetector = screenDetector,
             overlayCoordinator = overlayCoordinator,
             dualWebInputBridge = dualWebInputBridge
         )
-
-        shizukuBridge.registerListeners()
     }
 }

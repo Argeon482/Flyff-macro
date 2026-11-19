@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -31,12 +30,10 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.ScreenshotMonitor
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Splitscreen
-import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Web
 import androidx.compose.material3.AlertDialog
@@ -80,8 +77,6 @@ import com.example.model.IfColorStep
 import com.example.model.IfImageStep
 import com.example.model.LoopStartStep
 import com.example.model.MacroDefinition
-import com.example.shizuku.ShizukuConnectionState
-import com.example.shizuku.ShizukuStatus
 import com.example.ui.theme.AmberLogic
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.EmeraldRun
@@ -99,13 +94,9 @@ import com.example.ui.theme.TextSecondary
 @Composable
 fun StudioHomeScreen(
     macros: List<MacroDefinition>,
-    shizukuStatus: ShizukuStatus,
     hasOverlayPermission: Boolean,
     screenCaptureActive: Boolean,
     executionState: RuntimeExecutionState,
-    onRequestShizukuPermission: () -> Unit,
-    onOpenShizukuApp: () -> Unit,
-    onRefreshDiagnostics: () -> Unit,
     onRequestOverlayPermission: () -> Unit,
     onToggleScreenCapture: () -> Unit,
     onCreateMacro: (name: String, targetApp: String) -> Unit,
@@ -124,7 +115,6 @@ fun StudioHomeScreen(
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var showCreateDialog by remember { mutableStateOf(false) }
-    var showShizukuGuide by remember { mutableStateOf(false) }
 
     val filteredMacros = remember(macros, searchQuery) {
         if (searchQuery.isBlank()) macros
@@ -141,32 +131,17 @@ fun StudioHomeScreen(
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = ObsidianBg),
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (shizukuStatus.state == ShizukuConnectionState.CONNECTED) {
-                                        EmeraldRun
-                                    } else {
-                                        AmberLogic
-                                    }
-                                )
+                    Column {
+                        Text(
+                            text = "ShizuMacro",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = TextPrimary
                         )
-                        Spacer(Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "ShizuMacro",
-                                style = MaterialTheme.typography.headlineSmall,
-                                color = TextPrimary
-                            )
-                            Text(
-                                text = "SHIZUKU INPUT STUDIO",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = ElectricCyan
-                            )
-                        }
+                        Text(
+                            text = "DUAL FLYFF MACRO STUDIO",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ElectricCyan
+                        )
                     }
                 },
                 actions = {
@@ -183,12 +158,6 @@ fun StudioHomeScreen(
                         ) {
                             Icon(Icons.Default.UploadFile, contentDescription = "Export All JSON", tint = TextPrimary)
                         }
-                    }
-                    IconButton(
-                        onClick = onRefreshDiagnostics,
-                        modifier = Modifier.testTag("refresh_diagnostics_button")
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh status", tint = TextSecondary)
                     }
                 }
             )
@@ -227,20 +196,29 @@ fun StudioHomeScreen(
                 }
 
                 item {
-                    DiagnosticsPanel(
-                        shizukuStatus = shizukuStatus,
+                    QuickPermissionsStrip(
                         hasOverlayPermission = hasOverlayPermission,
                         screenCaptureActive = screenCaptureActive,
-                        onShizukuClick = {
-                            when (shizukuStatus.state) {
-                                ShizukuConnectionState.PERMISSION_REQUIRED -> onRequestShizukuPermission()
-                                ShizukuConnectionState.CONNECTED -> onRefreshDiagnostics()
-                                else -> showShizukuGuide = true
-                            }
-                        },
                         onOverlayClick = onRequestOverlayPermission,
                         onCaptureClick = onToggleScreenCapture
                     )
+                }
+
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "MACROS",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = TextSecondary
+                        )
+                        StudioBadgeChip("${macros.size} SAVED", ElectricCyan)
+                    }
                 }
 
                 if (macros.isNotEmpty()) {
@@ -248,7 +226,7 @@ fun StudioHomeScreen(
                         OutlinedTextField(
                             value = searchQuery,
                             onValueChange = { searchQuery = it },
-                            placeholder = { Text("Filter macros or target app...", color = TextDim) },
+                            placeholder = { Text("Search macros...", color = TextDim) },
                             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextDim) },
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp),
@@ -297,15 +275,6 @@ fun StudioHomeScreen(
             }
         )
     }
-
-    if (showShizukuGuide) {
-        ShizukuSetupGuideDialog(
-            shizukuStatus = shizukuStatus,
-            onOpenShizuku = onOpenShizukuApp,
-            onRequestPermission = onRequestShizukuPermission,
-            onDismiss = { showShizukuGuide = false }
-        )
-    }
 }
 
 @Composable
@@ -325,13 +294,13 @@ private fun DualFlyffLauncherCard(
                 .background(
                     Brush.horizontalGradient(
                         listOf(
-                            ElectricCyan.copy(alpha = 0.10f),
+                            ElectricCyan.copy(alpha = 0.12f),
                             EmeraldRun.copy(alpha = 0.06f),
                             Color.Transparent
                         )
                     )
                 )
-                .padding(14.dp),
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
@@ -341,13 +310,13 @@ private fun DualFlyffLauncherCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Web,
                         contentDescription = null,
                         tint = ElectricCyan,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                     Column {
                         Text(
@@ -356,17 +325,17 @@ private fun DualFlyffLauncherCard(
                             color = TextPrimary
                         )
                         Text(
-                            text = "universe.flyff.com/play • Isolated :acct2 Process",
+                            text = "A2 Top (:acct2) • A1 Main Bottom • Direct WebView Input",
                             style = MaterialTheme.typography.labelSmall,
                             color = EmeraldRun
                         )
                     }
                 }
-                StudioBadgeChip("WEBGL", ElectricCyan)
+                StudioBadgeChip("LIVE", EmeraldRun)
             }
 
             Text(
-                text = "Run two isolated accounts simultaneously in fullscreen WebViews with separate cookies/IndexedDB, Desktop/Mobile UA toggles, and a non-colliding Account 2 macro bar (no Accessibility, InputManager, or ADB).",
+                text = "Run two isolated accounts simultaneously with separate sessions and send per-step macro taps or keys to either A1 Main or A2 without interrupting your active touches.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary
             )
@@ -383,7 +352,7 @@ private fun DualFlyffLauncherCard(
                     ),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
-                        .weight(1.3f)
+                        .weight(1.35f)
                         .height(48.dp)
                         .testTag("launch_dual_flyff_btn")
                 ) {
@@ -411,102 +380,42 @@ private fun DualFlyffLauncherCard(
 }
 
 @Composable
-private fun DiagnosticsPanel(
-    shizukuStatus: ShizukuStatus,
+private fun QuickPermissionsStrip(
     hasOverlayPermission: Boolean,
     screenCaptureActive: Boolean,
-    onShizukuClick: () -> Unit,
     onOverlayClick: () -> Unit,
     onCaptureClick: () -> Unit
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = SlateSurface),
-        border = BorderStroke(1.dp, HairlineBorder),
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth()
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "SYSTEM DIAGNOSTICS",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = TextSecondary
-                )
-                Text(
-                    text = if (shizukuStatus.state == ShizukuConnectionState.CONNECTED) {
-                        "UID ${shizukuStatus.uid} • v${shizukuStatus.shizukuVersion}"
-                    } else {
-                        "NO ACCESSIBILITY NEEDED"
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = ElectricCyan
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val shizukuColor = when (shizukuStatus.state) {
-                    ShizukuConnectionState.CONNECTED -> EmeraldRun
-                    ShizukuConnectionState.PERMISSION_REQUIRED, ShizukuConnectionState.BINDING -> AmberLogic
-                    else -> RoseAlert
-                }
-                val shizukuLabel = when (shizukuStatus.state) {
-                    ShizukuConnectionState.CONNECTED -> "Connected"
-                    ShizukuConnectionState.PERMISSION_REQUIRED -> "Authorize"
-                    ShizukuConnectionState.BINDING -> "Binding..."
-                    ShizukuConnectionState.NOT_RUNNING -> "Stopped"
-                    ShizukuConnectionState.NOT_INSTALLED -> "Missing"
-                }
-
-                DiagnosticGateTile(
-                    title = "Shizuku",
-                    statusText = shizukuLabel,
-                    accent = shizukuColor,
-                    icon = Icons.Default.Terminal,
-                    onClick = onShizukuClick,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("diag_shizuku_tile")
-                )
-
-                DiagnosticGateTile(
-                    title = "Overlay",
-                    statusText = if (hasOverlayPermission) "Ready" else "Grant",
-                    accent = if (hasOverlayPermission) EmeraldRun else AmberLogic,
-                    icon = Icons.Default.Layers,
-                    onClick = onOverlayClick,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("diag_overlay_tile")
-                )
-
-                DiagnosticGateTile(
-                    title = "Vision",
-                    statusText = if (screenCaptureActive) "Active" else "Start",
-                    accent = if (screenCaptureActive) ElectricCyan else TextDim,
-                    icon = Icons.Default.ScreenshotMonitor,
-                    onClick = onCaptureClick,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("diag_vision_tile")
-                )
-            }
-        }
+        PermissionPill(
+            label = "Floating Dock",
+            statusText = if (hasOverlayPermission) "Ready" else "Grant",
+            accent = if (hasOverlayPermission) EmeraldRun else AmberLogic,
+            icon = Icons.Default.Layers,
+            onClick = onOverlayClick,
+            modifier = Modifier
+                .weight(1f)
+                .testTag("diag_overlay_tile")
+        )
+        PermissionPill(
+            label = "Vision Trigger",
+            statusText = if (screenCaptureActive) "Active" else "Off",
+            accent = if (screenCaptureActive) ElectricCyan else TextDim,
+            icon = Icons.Default.ScreenshotMonitor,
+            onClick = onCaptureClick,
+            modifier = Modifier
+                .weight(1f)
+                .testTag("diag_vision_tile")
+        )
     }
 }
 
 @Composable
-private fun DiagnosticGateTile(
-    title: String,
+private fun PermissionPill(
+    label: String,
     statusText: String,
     accent: Color,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -517,21 +426,28 @@ private fun DiagnosticGateTile(
         onClick = onClick,
         color = SlateWell,
         shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.4f)),
-        modifier = modifier.height(74.dp)
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.38f)),
+        modifier = modifier.height(48.dp)
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Icon(icon, contentDescription = title, tint = accent, modifier = Modifier.size(16.dp))
-                Text(title, style = MaterialTheme.typography.bodyMedium, color = TextSecondary, maxLines = 1)
+                Icon(icon, contentDescription = label, tint = accent, modifier = Modifier.size(16.dp))
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
             Text(
                 text = statusText,
@@ -560,11 +476,11 @@ private fun EmptyStudioHeroCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(170.dp)
+                    .height(160.dp)
             ) {
                 Image(
                     painter = painterResource(id = R.drawable.img_studio_hero),
-                    contentDescription = "ShizuMacro visual blueprint banner",
+                    contentDescription = "Dual Flyff macro automation banner",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -578,7 +494,7 @@ private fun EmptyStudioHeroCard(
                         )
                 )
                 Text(
-                    text = if (hasAnyMacros) "No matching macros" else "Zero-Collision Touch Automation",
+                    text = if (hasAnyMacros) "No matching macros" else "Dual-Account Macro Automation",
                     style = MaterialTheme.typography.headlineSmall,
                     color = TextPrimary,
                     modifier = Modifier
@@ -595,7 +511,7 @@ private fun EmptyStudioHeroCard(
                     text = if (hasAnyMacros) {
                         "Adjust your search filter or create a new macro sequence."
                     } else {
-                        "Build multi-step tap and swipe chains, pixel color & image template triggers, and loop/branch logic injected directly via Shizuku without Accessibility focus collisions."
+                        "Build multi-step key, tap, swipe, and pixel/image macros that target A1 Main or A2 independently inside Flyff Universe Dual Client."
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary
@@ -632,9 +548,9 @@ private fun EmptyStudioHeroCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(48.dp)
-                            .testTag("load_sandbox_demo_btn")
+                            .testTag("load_demo_flow_btn")
                     ) {
-                        Text("Generate Sandbox Demo Flow", color = AmberLogic)
+                        Text("Create Dual Flyff Demo Flow", color = AmberLogic)
                     }
                 }
             }
@@ -788,7 +704,7 @@ private fun CreateMacroDialog(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Macro Name") },
-                    placeholder = { Text("Daily Quest Runner") },
+                    placeholder = { Text("RM Buff + Main Farm") },
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -797,8 +713,8 @@ private fun CreateMacroDialog(
                 OutlinedTextField(
                     value = targetApp,
                     onValueChange = { targetApp = it },
-                    label = { Text("Target App Label (Optional)") },
-                    placeholder = { Text("Any Screen") },
+                    label = { Text("Label (Optional)") },
+                    placeholder = { Text("Dual Flyff") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -816,78 +732,6 @@ private fun CreateMacroDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Cancel", color = TextSecondary)
-            }
-        }
-    )
-}
-
-@Composable
-private fun ShizukuSetupGuideDialog(
-    shizukuStatus: ShizukuStatus,
-    onOpenShizuku: () -> Unit,
-    onRequestPermission: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = SlateSurface,
-        title = { Text("Shizuku Input Engine Setup", color = TextPrimary) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "ShizuMacro injects hardware MotionEvents via Shizuku's privileged shell/root UserService instead of AccessibilityService, preventing user touch collisions.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
-                )
-                Surface(
-                    color = SlateWell,
-                    shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.dp, HairlineBorder)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text("1. Install & open the Shizuku app.", style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
-                        Text("2. Start Shizuku via Wireless Debugging (Android 11+) or ADB.", style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
-                        Text("3. Return here and tap Authorize Shizuku.", style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
-                    }
-                }
-                if (shizukuStatus.lastError != null) {
-                    Text(
-                        text = shizukuStatus.lastError,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = RoseAlert
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            if (shizukuStatus.state == ShizukuConnectionState.PERMISSION_REQUIRED) {
-                Button(
-                    onClick = {
-                        onRequestPermission()
-                        onDismiss()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = ElectricCyan, contentColor = Color(0xFF04131A))
-                ) {
-                    Text("Authorize Shizuku")
-                }
-            } else {
-                Button(
-                    onClick = {
-                        onOpenShizuku()
-                        onDismiss()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = ElectricCyan, contentColor = Color(0xFF04131A))
-                ) {
-                    Text("Open Shizuku")
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close", color = TextSecondary)
             }
         }
     )

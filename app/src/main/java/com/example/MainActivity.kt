@@ -10,7 +10,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -26,10 +25,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.Terminal
-import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -71,12 +68,10 @@ import com.example.ui.UiNotice
 import com.example.ui.screens.ConsoleLogsScreen
 import com.example.ui.screens.MacroEditorScreen
 import com.example.ui.screens.StudioHomeScreen
-import com.example.ui.screens.TouchSandboxScreen
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.ObsidianBg
 import com.example.ui.theme.ShizuMacroTheme
 import com.example.ui.theme.SlateSurface
-import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import kotlinx.serialization.Serializable
 
@@ -89,42 +84,24 @@ sealed interface AppRoute {
     data class MacroEditor(val macroId: String) : AppRoute
 
     @Serializable
-    data object TouchSandbox : AppRoute
-
-    @Serializable
     data object ConsoleLogs : AppRoute
 }
 
 class MainActivity : ComponentActivity() {
-
-    var sandboxKeyInterceptor: ((KeyEvent) -> Boolean)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             ShizuMacroTheme {
-                ShizuMacroRoot(
-                    onRegisterSandboxKeyInterceptor = { interceptor ->
-                        sandboxKeyInterceptor = interceptor
-                    }
-                )
+                ShizuMacroRoot()
             }
         }
-    }
-
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val interceptor = sandboxKeyInterceptor
-        if (interceptor != null && interceptor(event)) {
-            return true
-        }
-        return super.dispatchKeyEvent(event)
     }
 }
 
 @Composable
 private fun ShizuMacroRoot(
-    onRegisterSandboxKeyInterceptor: (((KeyEvent) -> Boolean)?) -> Unit,
     viewModel: StudioViewModel = viewModel()
 ) {
     val navController = rememberNavController()
@@ -134,8 +111,6 @@ private fun ShizuMacroRoot(
     val macros by viewModel.macros.collectAsState()
     val templates by viewModel.templates.collectAsState()
     val logs by viewModel.recentLogs.collectAsState()
-    val shizukuStatus by viewModel.shizukuStatus.collectAsState()
-    val hardwareDiagnostics by viewModel.hardwareDiagnostics.collectAsState()
     val hasOverlay by viewModel.hasOverlayPermission.collectAsState()
     val captureActive by viewModel.screenCaptureActive.collectAsState()
     val executionState by viewModel.executionState.collectAsState()
@@ -231,8 +206,7 @@ private fun ShizuMacroRoot(
     val showTopLevelNav = backStackEntry?.destination?.hasRoute(AppRoute.MacroEditor::class) != true
 
     val navItems = listOf(
-        Triple(AppRoute.StudioHome, "Studio", Pair(Icons.Filled.Build, Icons.Outlined.Build)),
-        Triple(AppRoute.TouchSandbox, "Sandbox", Pair(Icons.Filled.TouchApp, Icons.Outlined.TouchApp)),
+        Triple(AppRoute.StudioHome, "Macros", Pair(Icons.Filled.Build, Icons.Outlined.Build)),
         Triple(AppRoute.ConsoleLogs, "Console", Pair(Icons.Filled.Terminal, Icons.Outlined.Terminal))
     )
 
@@ -325,13 +299,9 @@ private fun ShizuMacroRoot(
                         composable<AppRoute.StudioHome> {
                             StudioHomeScreen(
                                 macros = macros,
-                                shizukuStatus = shizukuStatus,
                                 hasOverlayPermission = hasOverlay,
                                 screenCaptureActive = captureActive,
                                 executionState = executionState,
-                                onRequestShizukuPermission = { viewModel.shizukuBridge.requestPermission() },
-                                onOpenShizukuApp = { viewModel.shizukuBridge.launchShizukuApp() },
-                                onRefreshDiagnostics = { viewModel.refreshDiagnostics() },
                                 onRequestOverlayPermission = openOverlayPermissionSettings,
                                 onToggleScreenCapture = {
                                     if (captureActive) viewModel.stopMediaProjection() else launchProjectionConsent()
@@ -342,7 +312,7 @@ private fun ShizuMacroRoot(
                                     }
                                 },
                                 onCreateDemoMacro = {
-                                    viewModel.createSandboxDemoMacro { id ->
+                                    viewModel.createDualFlyffDemoMacro { id ->
                                         navController.navigate(AppRoute.MacroEditor(id))
                                     }
                                 },
@@ -411,23 +381,6 @@ private fun ShizuMacroRoot(
                                     viewModel.cropTemplate(templateId, l, t, r, b, saveAsNew, onCropped)
                                 },
                                 onExportJson = { m -> triggerExport(m) }
-                            )
-                        }
-
-                        composable<AppRoute.TouchSandbox> {
-                            TouchSandboxScreen(
-                                shizukuStatus = shizukuStatus,
-                                hardwareDiagnostics = hardwareDiagnostics,
-                                onRefreshCapabilities = { viewModel.refreshHardwareCapabilities() },
-                                onCooperativeFingerUpdate = { down, x, y, downTime, devId, ptrId ->
-                                    viewModel.updateCooperativeFingerState(down, x, y, downTime, devId, ptrId)
-                                },
-                                onTestKey = { keyCode, holdMs, metaState ->
-                                    viewModel.testShizukuKeyInSandbox(keyCode, holdMs, metaState)
-                                },
-                                onTestTap = { x, y, mode -> viewModel.testShizukuTapInSandbox(x, y, mode) },
-                                onTestSwipe = { sx, sy, ex, ey, mode -> viewModel.testShizukuSwipeInSandbox(sx, sy, ex, ey, mode) },
-                                onRegisterKeyInterceptor = onRegisterSandboxKeyInterceptor
                             )
                         }
 

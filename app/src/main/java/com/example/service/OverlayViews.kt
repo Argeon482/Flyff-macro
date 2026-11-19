@@ -84,9 +84,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.engine.ExecutionStatus
 import com.example.engine.RuntimeExecutionState
-import com.example.shizuku.HardwareInputDiagnostics
-import com.example.shizuku.ShizukuConnectionState
-import com.example.shizuku.ShizukuStatus
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
@@ -104,8 +101,6 @@ private val StudioMuted = Color(0xFF94A3B8)
 fun FloatingControlDock(
     overlayState: OverlayUiState,
     executionState: RuntimeExecutionState,
-    shizukuStatus: ShizukuStatus,
-    hardwareDiagnostics: HardwareInputDiagnostics = HardwareInputDiagnostics(),
     screenCaptureActive: Boolean,
     dualWebActive: Boolean = false,
     onDragDelta: (dx: Int, dy: Int) -> Unit,
@@ -123,7 +118,7 @@ fun FloatingControlDock(
         ExecutionStatus.RUNNING -> StudioEmerald
         ExecutionStatus.PAUSED -> StudioAmber
         ExecutionStatus.ERROR -> StudioRose
-        ExecutionStatus.IDLE -> if (dualWebActive || shizukuStatus.state == ShizukuConnectionState.CONNECTED) StudioCyan else StudioMuted
+        ExecutionStatus.IDLE -> if (dualWebActive) StudioCyan else StudioMuted
     }
 
     Surface(
@@ -238,12 +233,8 @@ fun FloatingControlDock(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = if (dualWebActive) {
-                                "Dual WebView: LIVE"
-                            } else {
-                                "Shizuku: ${shizukuStatus.state.name.lowercase().replace('_', ' ')}"
-                            },
-                            color = if (dualWebActive || shizukuStatus.state == ShizukuConnectionState.CONNECTED) StudioEmerald else StudioAmber,
+                            text = if (dualWebActive) "Dual Flyff: LIVE" else "Dual Flyff: Standby",
+                            color = if (dualWebActive) StudioEmerald else StudioAmber,
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace
                         )
@@ -258,14 +249,10 @@ fun FloatingControlDock(
                     Text(
                         text = if (dualWebActive) {
                             "Routing: Per-step A1 / A2 direct WebView"
-                        } else if (hardwareDiagnostics.touchMonitorRunning) {
-                            "Touch Guard: Live evdev (Slot 0)"
-                        } else if (hardwareDiagnostics.devInputReadable) {
-                            "Touch Guard: evdev standby"
                         } else {
-                            "Touch Guard: Outside-touch watcher"
+                            "Open Dual Flyff to route macro inputs"
                         },
-                        color = if (dualWebActive || hardwareDiagnostics.touchMonitorRunning) StudioEmerald else StudioMuted,
+                        color = if (dualWebActive) StudioEmerald else StudioMuted,
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace
                     )

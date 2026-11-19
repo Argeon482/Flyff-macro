@@ -189,7 +189,7 @@ fun ConsoleLogsScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = "No execution events recorded yet. Run a macro or trigger a Shizuku test tap in the Sandbox.",
+                                text = "No execution events recorded yet. Open Dual Flyff and run a macro from the Floating Dock.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = TextSecondary,
                                 modifier = Modifier.padding(16.dp)

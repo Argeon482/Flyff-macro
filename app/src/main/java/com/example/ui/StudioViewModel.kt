@@ -5,36 +5,29 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.view.KeyEvent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.ShizuMacroApp
 import com.example.data.ExecutionLogEntity
-import com.example.data.LogLevel
 import com.example.data.TemplateAssetEntity
 import com.example.engine.RuntimeExecutionState
-import com.example.model.BranchAction
 import com.example.model.DelayStep
 import com.example.model.IfColorStep
 import com.example.model.IfImageStep
-import com.example.model.IfVariableStep
-import com.example.model.InputInjectionMode
-import com.example.model.KeyboardKeyCatalog
+import com.example.model.KeyPressStep
 import com.example.model.LoopEndStep
 import com.example.model.LoopStartStep
 import com.example.model.MacroDefinition
 import com.example.model.MacroStep
-import com.example.model.SetVariableStep
 import com.example.model.SwipeStep
 import com.example.model.TapStep
-import com.example.model.VarComparator
-import com.example.model.VarOperation
+import com.example.model.WebViewTarget
 import com.example.service.MacroOverlayService
 import com.example.service.OverlayUiState
 import com.example.service.PickerMode
 import com.example.service.PickerRequest
 import com.example.service.PickerResult
-import com.example.shizuku.HardwareInputDiagnostics
-import com.example.shizuku.ShizukuStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,7 +49,6 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     private val app = application as ShizuMacroApp
     private val repository = app.repository
-    val shizukuBridge = app.shizukuBridge
     val screenDetector = app.screenDetector
     val interpreter = app.interpreter
     val overlayCoordinator = app.overlayCoordinator
@@ -71,8 +63,6 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     val recentLogs: StateFlow<List<ExecutionLogEntity>> = repository.recentLogs
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val shizukuStatus: StateFlow<ShizukuStatus> = shizukuBridge.status
-    val hardwareDiagnostics: StateFlow<HardwareInputDiagnostics> = shizukuBridge.diagnostics
     val screenCaptureActive: StateFlow<Boolean> = screenDetector.isActive
     val executionState: StateFlow<RuntimeExecutionState> = interpreter.state
     val overlayState: StateFlow<OverlayUiState> = overlayCoordinator.overlayState
@@ -98,26 +88,6 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     fun refreshDiagnostics() {
         _hasOverlayPermission.value = canDrawOverlays()
-        shizukuBridge.refreshStatus()
-        if (shizukuBridge.hasPermission()) {
-            shizukuBridge.bindService()
-            shizukuBridge.refreshCapabilities()
-        }
-    }
-
-    fun refreshHardwareCapabilities() {
-        shizukuBridge.refreshCapabilities()
-    }
-
-    fun updateCooperativeFingerState(
-        isDown: Boolean,
-        screenX: Float,
-        screenY: Float,
-        downTime: Long,
-        deviceId: Int,
-        pointerId: Int = 0
-    ) {
-        shizukuBridge.updateCooperativeFingerState(isDown, screenX, screenY, downTime, deviceId, pointerId)
     }
 
     fun canDrawOverlays(): Boolean = Settings.canDrawOverlays(app)
@@ -128,9 +98,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             val macro = MacroDefinition(
                 id = UUID.randomUUID().toString(),
                 name = cleanName,
-                targetAppLabel = targetApp.trim().ifBlank { "Any Screen" },
+                targetAppLabel = targetApp.trim().ifBlank { "Dual Flyff" },
                 steps = listOf(
-                    TapStep(label = "Initial Tap", x = 540f, y = 960f),
+                    KeyPressStep(
+                        label = "Key 1 (A2)",
+                        customKeyCode = KeyEvent.KEYCODE_1,
+                        keyLabel = "1",
+                        holdMs = 45L,
+                        targetWebView = WebViewTarget.ACCOUNT_2
+                    ),
                     DelayStep(label = "Cooldown", minMs = 450L, maxMs = 650L)
                 )
             )
@@ -139,32 +115,35 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun createSandboxDemoMacro(onCreated: (String) -> Unit) {
+    fun createDualFlyffDemoMacro(onCreated: (String) -> Unit) {
         viewModelScope.launch {
             val loopId = UUID.randomUUID().toString()
             val macro = MacroDefinition(
                 id = UUID.randomUUID().toString(),
-                name = "Sandbox Loop & Color Flow",
-                description = "Demonstrates variable increments, conditional branching, and non-colliding taps in the Touch Sandbox.",
-                targetAppLabel = "Touch Sandbox",
+                name = "Dual Flyff A2 Buff + A1 Action",
+                description = "Alternates inputs between Account 2 (Top) and Account 1 Main (Bottom) in a single loop.",
+                targetAppLabel = "Dual Flyff",
                 loopCount = 1,
                 pollingIntervalMs = 200L,
                 steps = listOf(
-                    SetVariableStep(label = "Init Counter", variableName = "hits", operation = VarOperation.SET, valueExpression = "0"),
                     LoopStartStep(id = loopId, label = "Repeat 3x", iterations = 3),
-                    TapStep(label = "Tap Sandbox Target", x = 540f, y = 1050f, holdMs = 45L, jitterPx = 12),
-                    SetVariableStep(label = "Increment Counter", variableName = "hits", operation = VarOperation.INCREMENT, valueExpression = "1"),
-                    DelayStep(label = "Pace Interval", minMs = 350L, maxMs = 500L),
-                    LoopEndStep(label = "End Loop", loopStartId = loopId),
-                    IfVariableStep(
-                        label = "Verify Hit Count",
-                        variableName = "hits",
-                        comparator = VarComparator.GREATER_OR_EQUAL,
-                        compareValue = "3",
-                        thenAction = BranchAction.CONTINUE_NEXT,
-                        elseAction = BranchAction.STOP_MACRO
+                    KeyPressStep(
+                        label = "A2 Buff Key 1",
+                        customKeyCode = KeyEvent.KEYCODE_1,
+                        keyLabel = "1",
+                        holdMs = 45L,
+                        targetWebView = WebViewTarget.ACCOUNT_2
                     ),
-                    SwipeStep(label = "Sweep Gesture", startX = 280f, startY = 1250f, endX = 800f, endY = 1250f, durationMs = 280L)
+                    DelayStep(label = "Cast Delay", minMs = 400L, maxMs = 550L),
+                    KeyPressStep(
+                        label = "A1 Main Key Space",
+                        customKeyCode = KeyEvent.KEYCODE_SPACE,
+                        keyLabel = "Space",
+                        holdMs = 45L,
+                        targetWebView = WebViewTarget.ACCOUNT_1
+                    ),
+                    DelayStep(label = "Pace Interval", minMs = 350L, maxMs = 500L),
+                    LoopEndStep(label = "End Loop", loopStartId = loopId)
                 )
             )
             repository.saveMacro(macro)
@@ -293,72 +272,6 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             action = MacroOverlayService.ACTION_START_PICKER
         }
         startForegroundServiceCompat(intent)
-    }
-
-    fun testShizukuTapInSandbox(
-        x: Float,
-        y: Float,
-        mode: InputInjectionMode = InputInjectionMode.TOUCHSCREEN
-    ) {
-        viewModelScope.launch {
-            val ok = shizukuBridge.tap(x, y, holdMs = 45L, jitterPx = 0, mode = mode)
-            if (ok) {
-                repository.appendLog(
-                    "sandbox",
-                    "Touch Sandbox",
-                    "Shizuku Test",
-                    "Injected ${mode.displayLabel} tap at (${x.toInt()}, ${y.toInt()})",
-                    LogLevel.SUCCESS
-                )
-            } else if (!shizukuStatus.value.userServiceReady) {
-                _notices.tryEmit(UiNotice.Message("Shizuku is not connected. Start Shizuku & grant permission to inject system events.", isError = true))
-            }
-        }
-    }
-
-    fun testShizukuSwipeInSandbox(
-        sx: Float,
-        sy: Float,
-        ex: Float,
-        ey: Float,
-        mode: InputInjectionMode = InputInjectionMode.TOUCHSCREEN
-    ) {
-        viewModelScope.launch {
-            val ok = shizukuBridge.swipe(sx, sy, ex, ey, durationMs = 280L, steps = 16, mode = mode)
-            if (ok) {
-                repository.appendLog(
-                    "sandbox",
-                    "Touch Sandbox",
-                    "Shizuku Test",
-                    "Injected ${mode.displayLabel} swipe (${sx.toInt()},${sy.toInt()})->(${ex.toInt()},${ey.toInt()})",
-                    LogLevel.SUCCESS
-                )
-            } else if (!shizukuStatus.value.userServiceReady) {
-                _notices.tryEmit(UiNotice.Message("Shizuku is not connected.", isError = true))
-            }
-        }
-    }
-
-    fun testShizukuKeyInSandbox(
-        keyCode: Int,
-        holdMs: Long = 35L,
-        metaState: Int = 0
-    ) {
-        viewModelScope.launch {
-            val ok = shizukuBridge.pressKey(keyCode, holdMs = holdMs, metaState = metaState)
-            val binding = "${KeyboardKeyCatalog.formatMetaPrefix(metaState)}${KeyboardKeyCatalog.labelForKeyCode(keyCode)}"
-            if (ok) {
-                repository.appendLog(
-                    "sandbox",
-                    "Touch Sandbox",
-                    "Key Test",
-                    "Injected Key $binding (${holdMs}ms)",
-                    LogLevel.SUCCESS
-                )
-            } else if (!shizukuStatus.value.userServiceReady) {
-                _notices.tryEmit(UiNotice.Message("Shizuku is not connected. Start Shizuku & grant permission first.", isError = true))
-            }
-        }
     }
 
     fun exportMacrosToUri(uri: Uri, macroIds: Set<String>? = null) {
