@@ -50,10 +50,7 @@ object WebViewFactory {
             override fun shouldOverrideUrlLoading(
                 view: WebView?,
                 request: WebResourceRequest?
-            ): Boolean {
-                // Keep all auth redirects and game navigations inside this isolated WebView.
-                return false
-            }
+            ): Boolean = false
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
@@ -68,7 +65,6 @@ object WebViewFactory {
             }
 
             override fun onPermissionRequest(request: PermissionRequest?) {
-                // Grant protected media / audio permissions if requested by the WebGL game.
                 request?.grant(request.resources)
             }
         }
@@ -113,11 +109,6 @@ object WebViewFactory {
         webView.clearHistory()
     }
 
-    /**
-     * Primary non-colliding key dispatch directly to a target WebView instance.
-     * Produces genuine isTrusted: true Chromium events without touching InputManager,
-     * AccessibilityService, ADB, or Account 1's active touch stream.
-     */
     fun dispatchKeyNative(
         webView: WebView,
         keyCode: Int,
@@ -129,8 +120,6 @@ object WebViewFactory {
         if (webView.visibility != View.VISIBLE) {
             webView.visibility = View.VISIBLE
         }
-        // Local focus inside Account 2's own window/SurfaceControlViewHost does not steal
-        // OS window focus or cancel touch gestures in Account 1's process.
         if (!webView.hasFocus()) {
             webView.requestFocus()
         }
@@ -168,9 +157,6 @@ object WebViewFactory {
         return true
     }
 
-    /**
-     * Fallback JS DOM synthetic KeyboardEvent dispatch via evaluateJavascript.
-     */
     fun dispatchKeyJs(
         webView: WebView,
         keyCode: Int,
@@ -201,11 +187,9 @@ object WebViewFactory {
                   cancelable: true,
                   composed: true
                 };
-                var downEv = new KeyboardEvent('keydown', init);
-                target.dispatchEvent(downEv);
+                target.dispatchEvent(new KeyboardEvent('keydown', init));
                 setTimeout(function() {
-                  var upEv = new KeyboardEvent('keyup', init);
-                  target.dispatchEvent(upEv);
+                  target.dispatchEvent(new KeyboardEvent('keyup', init));
                 }, $clampedHold);
               } catch (e) {}
             })();
@@ -214,9 +198,6 @@ object WebViewFactory {
         return true
     }
 
-    /**
-     * Primary non-colliding direct MotionEvent canvas tap on a target WebView instance.
-     */
     fun dispatchCanvasTapNative(
         webView: WebView,
         normX: Float,
@@ -230,7 +211,7 @@ object WebViewFactory {
 
         val px = normX.coerceIn(0f, 1f) * w.toFloat()
         val py = normY.coerceIn(0f, 1f) * h.toFloat()
-        val clampedHold = holdMs.coerceIn(20L, 1000L)
+        val clampedHold = holdMs.coerceIn(20L, 1500L)
 
         val downTime = SystemClock.uptimeMillis()
         val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, px, py, 0)
@@ -247,9 +228,6 @@ object WebViewFactory {
         return true
     }
 
-    /**
-     * Fallback JS DOM synthetic pointer/mouse tap at normalized canvas coordinates.
-     */
     fun dispatchCanvasTapJs(
         webView: WebView,
         normX: Float,
@@ -258,7 +236,7 @@ object WebViewFactory {
     ): Boolean {
         val nx = normX.coerceIn(0f, 1f)
         val ny = normY.coerceIn(0f, 1f)
-        val clampedHold = holdMs.coerceIn(20L, 1000L)
+        val clampedHold = holdMs.coerceIn(20L, 1500L)
         val js = """
             (function() {
               try {
@@ -281,6 +259,106 @@ object WebViewFactory {
                   el.dispatchEvent(new MouseEvent('mouseup', upOpts));
                   el.dispatchEvent(new MouseEvent('click', upOpts));
                 }, $clampedHold);
+              } catch (e) {}
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(js, null)
+        return true
+    }
+
+    fun dispatchCanvasSwipeNative(
+        webView: WebView,
+        startNormX: Float,
+        startNormY: Float,
+        endNormX: Float,
+        endNormY: Float,
+        durationMs: Long,
+        steps: Int,
+        mainHandler: Handler = Handler(Looper.getMainLooper())
+    ): Boolean {
+        val w = webView.width
+        val h = webView.height
+        if (w <= 0 || h <= 0) return false
+
+        val sx = startNormX.coerceIn(0f, 1f) * w.toFloat()
+        val sy = startNormY.coerceIn(0f, 1f) * h.toFloat()
+        val ex = endNormX.coerceIn(0f, 1f) * w.toFloat()
+        val ey = endNormY.coerceIn(0f, 1f) * h.toFloat()
+        val clampedDuration = durationMs.coerceIn(40L, 4000L)
+        val clampedSteps = steps.coerceIn(2, 48)
+
+        val downTime = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, sx, sy, 0)
+        down.source = InputDevice.SOURCE_TOUCHSCREEN
+        webView.dispatchTouchEvent(down)
+        down.recycle()
+
+        for (i in 1..clampedSteps) {
+            val frac = i.toFloat() / clampedSteps.toFloat()
+            val delayMs = (clampedDuration * frac).toLong()
+            val cx = sx + (ex - sx) * frac
+            val cy = sy + (ey - sy) * frac
+            mainHandler.postDelayed({
+                val move = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_MOVE, cx, cy, 0)
+                move.source = InputDevice.SOURCE_TOUCHSCREEN
+                webView.dispatchTouchEvent(move)
+                move.recycle()
+            }, delayMs)
+        }
+
+        mainHandler.postDelayed({
+            val up = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, ex, ey, 0)
+            up.source = InputDevice.SOURCE_TOUCHSCREEN
+            webView.dispatchTouchEvent(up)
+            up.recycle()
+        }, clampedDuration + 10L)
+        return true
+    }
+
+    fun dispatchCanvasSwipeJs(
+        webView: WebView,
+        startNormX: Float,
+        startNormY: Float,
+        endNormX: Float,
+        endNormY: Float,
+        durationMs: Long,
+        steps: Int
+    ): Boolean {
+        val sx = startNormX.coerceIn(0f, 1f)
+        val sy = startNormY.coerceIn(0f, 1f)
+        val ex = endNormX.coerceIn(0f, 1f)
+        val ey = endNormY.coerceIn(0f, 1f)
+        val clampedDuration = durationMs.coerceIn(40L, 4000L)
+        val clampedSteps = steps.coerceIn(2, 30)
+        val js = """
+            (function() {
+              try {
+                var vw = window.innerWidth || document.documentElement.clientWidth || 1;
+                var vh = window.innerHeight || document.documentElement.clientHeight || 1;
+                var x0 = vw * $sx, y0 = vh * $sy;
+                var x1 = vw * $ex, y1 = vh * $ey;
+                var el = document.elementFromPoint(Math.round(x0), Math.round(y0)) || document.querySelector('canvas') || document.body;
+                if (!el) return;
+                function fire(type, x, y, btns) {
+                  var opts = { bubbles: true, cancelable: true, view: window, clientX: Math.round(x), clientY: Math.round(y), button: 0, buttons: btns };
+                  if (typeof PointerEvent !== 'undefined') {
+                    var pType = type === 'mousedown' ? 'pointerdown' : (type === 'mousemove' ? 'pointermove' : 'pointerup');
+                    el.dispatchEvent(new PointerEvent(pType, Object.assign({ pointerId: 1, pointerType: 'touch', isPrimary: true }, opts)));
+                  }
+                  el.dispatchEvent(new MouseEvent(type, opts));
+                }
+                fire('mousedown', x0, y0, 1);
+                var n = $clampedSteps;
+                var dur = $clampedDuration;
+                for (var i = 1; i <= n; i++) {
+                  (function(idx) {
+                    setTimeout(function() {
+                      var f = idx / n;
+                      fire('mousemove', x0 + (x1 - x0) * f, y0 + (y1 - y0) * f, 1);
+                      if (idx === n) fire('mouseup', x1, y1, 0);
+                    }, Math.round(dur * (idx / n)));
+                  })(i);
+                }
               } catch (e) {}
             })();
         """.trimIndent()

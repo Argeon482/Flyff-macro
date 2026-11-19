@@ -108,6 +108,12 @@ class Account2HostService : Service() {
             Account2WebViewManager.setDesktopUserAgent(applicationContext, desktop)
         }
 
+        override fun dispatchMotionEvent(event: android.view.MotionEvent?) {
+            if (event != null) {
+                Account2WebViewManager.dispatchRawMotionEvent(event)
+            }
+        }
+
         override fun dispatchKey(
             keyCode: Int,
             holdMs: Long,
@@ -129,6 +135,29 @@ class Account2HostService : Service() {
             val mode = InputDispatchMode.fromWire(dispatchMode)
             return runOnMainSync {
                 Account2WebViewManager.dispatchCanvasTap(normX, normY, holdMs, mode)
+            }
+        }
+
+        override fun dispatchCanvasSwipe(
+            startNormX: Float,
+            startNormY: Float,
+            endNormX: Float,
+            endNormY: Float,
+            durationMs: Long,
+            steps: Int,
+            dispatchMode: Int
+        ): Boolean {
+            val mode = InputDispatchMode.fromWire(dispatchMode)
+            return runOnMainSync {
+                Account2WebViewManager.dispatchCanvasSwipe(
+                    startNormX,
+                    startNormY,
+                    endNormX,
+                    endNormY,
+                    durationMs,
+                    steps,
+                    mode
+                )
             }
         }
 

@@ -163,6 +163,21 @@ object Account2WebViewManager {
         }
     }
 
+    fun dispatchRawMotionEvent(event: android.view.MotionEvent) {
+        val copy = android.view.MotionEvent.obtain(event)
+        mainHandler.post {
+            try {
+                val wv = webView ?: return@post
+                if (wv.visibility != View.VISIBLE) {
+                    wv.visibility = View.VISIBLE
+                }
+                wv.dispatchTouchEvent(copy)
+            } finally {
+                copy.recycle()
+            }
+        }
+    }
+
     fun dispatchCanvasTap(
         normX: Float,
         normY: Float,
@@ -180,6 +195,44 @@ object Account2WebViewManager {
                 WebViewFactory.dispatchCanvasTapNative(wv, normX, normY, holdMs, mainHandler)
             InputDispatchMode.JS_DOM ->
                 WebViewFactory.dispatchCanvasTapJs(wv, normX, normY, holdMs)
+        }
+    }
+
+    fun dispatchCanvasSwipe(
+        startNormX: Float,
+        startNormY: Float,
+        endNormX: Float,
+        endNormY: Float,
+        durationMs: Long,
+        steps: Int,
+        mode: InputDispatchMode
+    ): Boolean {
+        val wv = webView ?: return false
+        val count = dispatchCounter.incrementAndGet()
+        lastDispatchSummary = "${if (mode == InputDispatchMode.NATIVE_EVENT) "NATIVE" else "JS"} SWIPE -> A2 #$count"
+
+        return when (mode) {
+            InputDispatchMode.NATIVE_EVENT ->
+                WebViewFactory.dispatchCanvasSwipeNative(
+                    wv,
+                    startNormX,
+                    startNormY,
+                    endNormX,
+                    endNormY,
+                    durationMs,
+                    steps,
+                    mainHandler
+                )
+            InputDispatchMode.JS_DOM ->
+                WebViewFactory.dispatchCanvasSwipeJs(
+                    wv,
+                    startNormX,
+                    startNormY,
+                    endNormX,
+                    endNormY,
+                    durationMs,
+                    steps
+                )
         }
     }
 

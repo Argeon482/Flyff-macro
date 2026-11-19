@@ -24,6 +24,7 @@ import com.example.model.TapStep
 import com.example.model.TouchGuardPolicy
 import com.example.model.VarComparator
 import com.example.model.VarOperation
+import com.example.dualweb.DualWebInputBridge
 import com.example.service.OverlayCoordinator
 import com.example.shizuku.LiveTouchSnapshot
 import com.example.shizuku.ShizukuConnectionState
@@ -74,7 +75,8 @@ class MacroInterpreter(
     private val repository: MacroRepository,
     private val shizukuBridge: ShizukuInputBridge,
     private val screenDetector: ScreenDetector,
-    private val overlayCoordinator: OverlayCoordinator = OverlayCoordinator()
+    private val overlayCoordinator: OverlayCoordinator = OverlayCoordinator(),
+    private val dualWebInputBridge: DualWebInputBridge = DualWebInputBridge()
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var executionJob: Job? = null
@@ -99,7 +101,8 @@ class MacroInterpreter(
             it.enabled && (it is TapStep || it is SwipeStep || it is KeyPressStep ||
                 (it is IfColorStep && it.tapOnMatch) || (it is IfImageStep && it.tapOnMatch))
         }
-        if (requiresTouch && shizukuBridge.status.value.state != ShizukuConnectionState.CONNECTED) {
+        val dualWebActive = dualWebInputBridge.isRoutingActive()
+        if (requiresTouch && !dualWebActive && shizukuBridge.status.value.state != ShizukuConnectionState.CONNECTED) {
             val msg = "Shizuku service is not connected. Start Shizuku and grant permission first."
             _state.value = RuntimeExecutionState(
                 status = ExecutionStatus.ERROR,
@@ -295,36 +298,63 @@ class MacroInterpreter(
 
             when (step) {
                 is TapStep -> {
-                    waitForTouchGuard(macro.touchGuardPolicy)
-                    val ok = shizukuBridge.tap(step.x, step.y, step.holdMs, step.jitterPx, macro.injectionMode)
+                    val useDualWeb = dualWebInputBridge.isRoutingActive()
+                    if (!useDualWeb) waitForTouchGuard(macro.touchGuardPolicy)
+                    val ok = if (useDualWeb) {
+                        dualWebInputBridge.dispatchTap(step.x, step.y, step.holdMs, step.jitterPx)
+                    } else {
+                        shizukuBridge.tap(step.x, step.y, step.holdMs, step.jitterPx, macro.injectionMode)
+                    }
+                    val targetTag = if (useDualWeb) dualWebInputBridge.targetDescription() else macro.injectionMode.displayLabel
                     val msg = if (ok) {
-                        "Tap (${step.x.toInt()}, ${step.y.toInt()}) [${macro.injectionMode.displayLabel}]"
+                        "Tap (${step.x.toInt()}, ${step.y.toInt()}) [$targetTag]"
                     } else {
                         "Tap failed at (${step.x.toInt()}, ${step.y.toInt()})"
                     }
                     updateTelemetry(msg)
                     if (!ok) {
-                        failExecution(macro, displayLabel, "Shizuku touch injection failed")
+                        failExecution(
+                            macro,
+                            displayLabel,
+                            if (useDualWeb) "WebView tap dispatch failed ($targetTag)" else "Shizuku touch injection failed"
+                        )
                         return FrameOutcome.FAILED
                     }
                     pc++
                 }
 
                 is SwipeStep -> {
-                    waitForTouchGuard(macro.touchGuardPolicy)
-                    val ok = shizukuBridge.swipe(
-                        step.startX,
-                        step.startY,
-                        step.endX,
-                        step.endY,
-                        step.durationMs,
-                        step.interpolateSteps,
-                        macro.injectionMode
-                    )
-                    val msg = "Swipe (${step.startX.toInt()},${step.startY.toInt()}) -> (${step.endX.toInt()},${step.endY.toInt()}) [${macro.injectionMode.displayLabel}]"
+                    val useDualWeb = dualWebInputBridge.isRoutingActive()
+                    if (!useDualWeb) waitForTouchGuard(macro.touchGuardPolicy)
+                    val ok = if (useDualWeb) {
+                        dualWebInputBridge.dispatchSwipe(
+                            step.startX,
+                            step.startY,
+                            step.endX,
+                            step.endY,
+                            step.durationMs,
+                            step.interpolateSteps
+                        )
+                    } else {
+                        shizukuBridge.swipe(
+                            step.startX,
+                            step.startY,
+                            step.endX,
+                            step.endY,
+                            step.durationMs,
+                            step.interpolateSteps,
+                            macro.injectionMode
+                        )
+                    }
+                    val targetTag = if (useDualWeb) dualWebInputBridge.targetDescription() else macro.injectionMode.displayLabel
+                    val msg = "Swipe (${step.startX.toInt()},${step.startY.toInt()}) -> (${step.endX.toInt()},${step.endY.toInt()}) [$targetTag]"
                     updateTelemetry(msg)
                     if (!ok) {
-                        failExecution(macro, displayLabel, "Shizuku swipe injection failed")
+                        failExecution(
+                            macro,
+                            displayLabel,
+                            if (useDualWeb) "WebView swipe dispatch failed ($targetTag)" else "Shizuku swipe injection failed"
+                        )
                         return FrameOutcome.FAILED
                     }
                     pc++
@@ -342,8 +372,14 @@ class MacroInterpreter(
                 is KeyPressStep -> {
                     val code = step.resolvedKeyCode()
                     val binding = step.formattedBinding()
-                    val ok = shizukuBridge.pressKey(code, step.holdMs, step.metaState)
-                    updateTelemetry("Key $binding (${step.holdMs}ms)")
+                    val useDualWeb = dualWebInputBridge.isRoutingActive()
+                    val ok = if (useDualWeb) {
+                        dualWebInputBridge.dispatchKey(code, step.holdMs, step.metaState)
+                    } else {
+                        shizukuBridge.pressKey(code, step.holdMs, step.metaState)
+                    }
+                    val targetTag = if (useDualWeb) " [${dualWebInputBridge.targetDescription()}]" else ""
+                    updateTelemetry("Key $binding (${step.holdMs}ms)$targetTag")
                     if (!ok) {
                         failExecution(macro, displayLabel, "Key injection failed ($binding)")
                         return FrameOutcome.FAILED
@@ -443,8 +479,12 @@ class MacroInterpreter(
                                 LogLevel.SUCCESS
                             )
                             if (step.tapOnMatch) {
-                                waitForTouchGuard(macro.touchGuardPolicy)
-                                shizukuBridge.tap(step.x.toFloat(), step.y.toFloat(), mode = macro.injectionMode)
+                                if (dualWebInputBridge.isRoutingActive()) {
+                                    dualWebInputBridge.dispatchTap(step.x.toFloat(), step.y.toFloat(), 40L, 0)
+                                } else {
+                                    waitForTouchGuard(macro.touchGuardPolicy)
+                                    shizukuBridge.tap(step.x.toFloat(), step.y.toFloat(), mode = macro.injectionMode)
+                                }
                             }
                             pc = resolveBranchPc(step.thenAction, step.thenJumpStepId, pc, steps, stepIndexById, loopStack) {
                                 stopRequested = true
@@ -484,8 +524,12 @@ class MacroInterpreter(
                                 LogLevel.SUCCESS
                             )
                             if (step.tapOnMatch) {
-                                waitForTouchGuard(macro.touchGuardPolicy)
-                                shizukuBridge.tap(result.centerX.toFloat(), result.centerY.toFloat(), mode = macro.injectionMode)
+                                if (dualWebInputBridge.isRoutingActive()) {
+                                    dualWebInputBridge.dispatchTap(result.centerX.toFloat(), result.centerY.toFloat(), 40L, 0)
+                                } else {
+                                    waitForTouchGuard(macro.touchGuardPolicy)
+                                    shizukuBridge.tap(result.centerX.toFloat(), result.centerY.toFloat(), mode = macro.injectionMode)
+                                }
                             }
                             pc = resolveBranchPc(step.thenAction, step.thenJumpStepId, pc, steps, stepIndexById, loopStack) {
                                 stopRequested = true

@@ -5,7 +5,6 @@ import android.view.KeyEvent
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.util.UUID
 
 object DualWebConstants {
     const val FLYFF_UNIVERSE_URL = "https://universe.flyff.com/play"
@@ -35,12 +34,12 @@ enum class InputDispatchMode(val wireValue: Int, val shortLabel: String, val des
     NATIVE_EVENT(
         wireValue = 0,
         shortLabel = "Native (isTrusted)",
-        description = "Calls webView2.dispatchKeyEvent / dispatchTouchEvent directly on Account 2 (isTrusted: true, zero focus steal)."
+        description = "Calls webView.dispatchKeyEvent / dispatchTouchEvent directly on the target WebView (isTrusted: true, zero focus steal)."
     ),
     JS_DOM(
         wireValue = 1,
         shortLabel = "JS DOM Fallback",
-        description = "Dispatches synthetic KeyboardEvent / PointerEvent via evaluateJavascript directly to Account 2's canvas/document."
+        description = "Dispatches synthetic KeyboardEvent / PointerEvent via evaluateJavascript directly to the target WebView canvas/document."
     );
 
     companion object {
@@ -50,29 +49,28 @@ enum class InputDispatchMode(val wireValue: Int, val shortLabel: String, val des
 }
 
 enum class DualLayoutMode(val label: String, val shortLabel: String) {
-    SPLIT_50_50("Split 50 / 50", "50/50"),
-    FOCUS_70_30("70% A1 / 30% A2", "70/30"),
-    ACCT1_FULL_PIP("A1 Full + A2 PiP", "A1 Full"),
-    ACCT2_FULL_PIP("A2 Full + A1 PiP", "A2 Full")
+    SPLIT_50_50("50 / 50 Split", "50/50"),
+    SINGLE_ACCT_1("Single: Account 1", "A1 Full"),
+    SINGLE_ACCT_2("Single: Account 2", "A2 Full")
 }
 
-enum class MacroActionKind {
-    KEY,
-    CANVAS_TAP
+enum class DualWebMacroTarget(val label: String, val shortLabel: String, val description: String) {
+    ACCOUNT_2(
+        label = "Account 2 (:acct2)",
+        shortLabel = "A2",
+        description = "Routes macro taps, swipes, and keys directly to Account 2 while you play Account 1."
+    ),
+    ACCOUNT_1(
+        label = "Account 1 (Main)",
+        shortLabel = "A1",
+        description = "Routes macro taps, swipes, and keys directly to Account 1."
+    ),
+    AUTO_PANE(
+        label = "Auto (By Screen Pane)",
+        shortLabel = "Auto",
+        description = "Routes taps/swipes to whichever WebView pane contains the picked coordinates (keys target A2)."
+    )
 }
-
-@Serializable
-data class DualMacroButton(
-    val id: String = UUID.randomUUID().toString(),
-    val label: String,
-    val actionKind: MacroActionKind = MacroActionKind.KEY,
-    val keyCode: Int = KeyEvent.KEYCODE_1,
-    val holdMs: Long = 35L,
-    val loopEnabled: Boolean = false,
-    val intervalMs: Long = 1500L,
-    val tapNormX: Float = 0.5f,
-    val tapNormY: Float = 0.5f
-)
 
 @Serializable
 data class DualWebConfigState(
@@ -80,21 +78,9 @@ data class DualWebConfigState(
     val acct2DesktopUa: Boolean = true,
     val dispatchMode: InputDispatchMode = InputDispatchMode.NATIVE_EVENT,
     val layoutMode: DualLayoutMode = DualLayoutMode.SPLIT_50_50,
+    val macroTarget: DualWebMacroTarget = DualWebMacroTarget.ACCOUNT_2,
     val showAccountBadges: Boolean = true,
-    val macroButtons: List<DualMacroButton> = defaultMacroButtons()
-)
-
-fun defaultMacroButtons(): List<DualMacroButton> = listOf(
-    DualMacroButton(id = "btn_1", label = "1", keyCode = KeyEvent.KEYCODE_1, intervalMs = 1200L),
-    DualMacroButton(id = "btn_2", label = "2", keyCode = KeyEvent.KEYCODE_2, intervalMs = 1500L),
-    DualMacroButton(id = "btn_3", label = "3", keyCode = KeyEvent.KEYCODE_3, intervalMs = 2000L),
-    DualMacroButton(id = "btn_4", label = "4", keyCode = KeyEvent.KEYCODE_4, intervalMs = 3000L),
-    DualMacroButton(id = "btn_5", label = "5", keyCode = KeyEvent.KEYCODE_5, intervalMs = 5000L),
-    DualMacroButton(id = "btn_f1", label = "F1", keyCode = KeyEvent.KEYCODE_F1, intervalMs = 10000L),
-    DualMacroButton(id = "btn_f2", label = "F2", keyCode = KeyEvent.KEYCODE_F2, intervalMs = 15000L),
-    DualMacroButton(id = "btn_f3", label = "F3", keyCode = KeyEvent.KEYCODE_F3, intervalMs = 30000L),
-    DualMacroButton(id = "btn_space", label = "SPC", keyCode = KeyEvent.KEYCODE_SPACE, intervalMs = 800L),
-    DualMacroButton(id = "btn_z", label = "Z", keyCode = KeyEvent.KEYCODE_Z, intervalMs = 2000L)
+    val selectedMacroId: String? = null
 )
 
 data class DomKeyDescriptor(
@@ -104,43 +90,6 @@ data class DomKeyDescriptor(
 )
 
 object DomKeyMapper {
-    val quickPresetKeys: List<Pair<Int, String>> = listOf(
-        KeyEvent.KEYCODE_1 to "1",
-        KeyEvent.KEYCODE_2 to "2",
-        KeyEvent.KEYCODE_3 to "3",
-        KeyEvent.KEYCODE_4 to "4",
-        KeyEvent.KEYCODE_5 to "5",
-        KeyEvent.KEYCODE_6 to "6",
-        KeyEvent.KEYCODE_7 to "7",
-        KeyEvent.KEYCODE_8 to "8",
-        KeyEvent.KEYCODE_9 to "9",
-        KeyEvent.KEYCODE_0 to "0",
-        KeyEvent.KEYCODE_F1 to "F1",
-        KeyEvent.KEYCODE_F2 to "F2",
-        KeyEvent.KEYCODE_F3 to "F3",
-        KeyEvent.KEYCODE_F4 to "F4",
-        KeyEvent.KEYCODE_F5 to "F5",
-        KeyEvent.KEYCODE_F6 to "F6",
-        KeyEvent.KEYCODE_F7 to "F7",
-        KeyEvent.KEYCODE_F8 to "F8",
-        KeyEvent.KEYCODE_F9 to "F9",
-        KeyEvent.KEYCODE_SPACE to "Space",
-        KeyEvent.KEYCODE_TAB to "Tab",
-        KeyEvent.KEYCODE_ENTER to "Enter",
-        KeyEvent.KEYCODE_ESCAPE to "Esc",
-        KeyEvent.KEYCODE_Z to "Z",
-        KeyEvent.KEYCODE_C to "C",
-        KeyEvent.KEYCODE_X to "X",
-        KeyEvent.KEYCODE_Q to "Q",
-        KeyEvent.KEYCODE_E to "E",
-        KeyEvent.KEYCODE_R to "R",
-        KeyEvent.KEYCODE_F to "F",
-        KeyEvent.KEYCODE_W to "W",
-        KeyEvent.KEYCODE_A to "A",
-        KeyEvent.KEYCODE_S to "S",
-        KeyEvent.KEYCODE_D to "D"
-    )
-
     fun toDomDescriptor(androidKeyCode: Int): DomKeyDescriptor {
         if (androidKeyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9) {
             val digit = androidKeyCode - KeyEvent.KEYCODE_0
@@ -195,6 +144,6 @@ class DualWebPreferences(context: Context) {
     }
 
     companion object {
-        private const val KEY_CONFIG_JSON = "config_v1"
+        private const val KEY_CONFIG_JSON = "config_v2"
     }
 }

@@ -7,6 +7,7 @@ import com.example.data.AppDatabase
 import com.example.data.MacroRepository
 import com.example.dualweb.Account2WebViewManager
 import com.example.dualweb.DualWebConstants
+import com.example.dualweb.DualWebInputBridge
 import com.example.engine.MacroInterpreter
 import com.example.model.ScriptClipboard
 import com.example.service.OverlayCoordinator
@@ -29,6 +30,8 @@ class ShizuMacroApp : Application() {
         private set
     lateinit var scriptClipboard: ScriptClipboard
         private set
+    lateinit var dualWebInputBridge: DualWebInputBridge
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -48,7 +51,14 @@ class ShizuMacroApp : Application() {
         screenDetector = ScreenDetector(this)
         overlayCoordinator = OverlayCoordinator()
         scriptClipboard = ScriptClipboard()
-        interpreter = MacroInterpreter(repository, shizukuBridge, screenDetector, overlayCoordinator)
+        dualWebInputBridge = DualWebInputBridge()
+        interpreter = MacroInterpreter(
+            repository = repository,
+            shizukuBridge = shizukuBridge,
+            screenDetector = screenDetector,
+            overlayCoordinator = overlayCoordinator,
+            dualWebInputBridge = dualWebInputBridge
+        )
 
         shizukuBridge.registerListeners()
     }
