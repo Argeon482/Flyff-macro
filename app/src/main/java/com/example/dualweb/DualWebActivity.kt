@@ -76,6 +76,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.example.ShizuMacroApp
 import com.example.model.MacroDefinition
+import com.example.model.WebViewTarget
 import com.example.service.MacroOverlayService
 import com.example.ui.theme.AmberLogic
 import com.example.ui.theme.ElectricCyan
@@ -117,23 +118,43 @@ class DualWebActivity : ComponentActivity() {
     private var lastActiveAcct2Rect: Rect = Rect()
 
     private val macroDelegate = object : DualWebMacroDelegate {
-        override fun dispatchKey(keyCode: Int, holdMs: Long, metaState: Int): Boolean {
+        override fun dispatchKey(
+            keyCode: Int,
+            holdMs: Long,
+            metaState: Int,
+            targetOverride: WebViewTarget
+        ): Boolean {
             val cfg = controller.config.value
-            return when (cfg.macroTarget) {
-                DualWebMacroTarget.ACCOUNT_1 -> dispatchKeyToAcct1(keyCode, holdMs, metaState, cfg.dispatchMode)
-                DualWebMacroTarget.ACCOUNT_2,
-                DualWebMacroTarget.AUTO_PANE -> controller.dispatchKeyDirect(keyCode, holdMs, metaState)
+            val resolvedAcct = when (targetOverride) {
+                WebViewTarget.ACCOUNT_1 -> 1
+                WebViewTarget.ACCOUNT_2 -> 2
+                WebViewTarget.DEFAULT -> when (cfg.macroTarget) {
+                    DualWebMacroTarget.ACCOUNT_1 -> 1
+                    DualWebMacroTarget.ACCOUNT_2,
+                    DualWebMacroTarget.AUTO_PANE -> 2
+                }
+            }
+            return if (resolvedAcct == 1) {
+                dispatchKeyToAcct1(keyCode, holdMs, metaState, cfg.dispatchMode)
+            } else {
+                controller.dispatchKeyDirect(keyCode, holdMs, metaState)
             }
         }
 
-        override fun dispatchTap(screenX: Float, screenY: Float, holdMs: Long, jitterPx: Int): Boolean {
+        override fun dispatchTap(
+            screenX: Float,
+            screenY: Float,
+            holdMs: Long,
+            jitterPx: Int,
+            targetOverride: WebViewTarget
+        ): Boolean {
             val cfg = controller.config.value
             val jx = if (jitterPx > 0) Random.nextInt(-jitterPx, jitterPx + 1).toFloat() else 0f
             val jy = if (jitterPx > 0) Random.nextInt(-jitterPx, jitterPx + 1).toFloat() else 0f
             val px = screenX + jx
             val py = screenY + jy
 
-            val resolvedAcct = resolveTargetAccountForPoint(cfg.macroTarget, px, py)
+            val resolvedAcct = resolveTargetAccountForPoint(targetOverride, cfg.macroTarget, px, py)
             val (normX, normY) = mapScreenPointToNormalized(resolvedAcct, px, py)
             return if (resolvedAcct == 1) {
                 dispatchTapToAcct1(normX, normY, holdMs, cfg.dispatchMode)
@@ -148,10 +169,11 @@ class DualWebActivity : ComponentActivity() {
             endX: Float,
             endY: Float,
             durationMs: Long,
-            steps: Int
+            steps: Int,
+            targetOverride: WebViewTarget
         ): Boolean {
             val cfg = controller.config.value
-            val resolvedAcct = resolveTargetAccountForPoint(cfg.macroTarget, startX, startY)
+            val resolvedAcct = resolveTargetAccountForPoint(targetOverride, cfg.macroTarget, startX, startY)
             val (snx, sny) = mapScreenPointToNormalized(resolvedAcct, startX, startY)
             val (enx, eny) = mapScreenPointToNormalized(resolvedAcct, endX, endY)
             return if (resolvedAcct == 1) {
@@ -161,9 +183,28 @@ class DualWebActivity : ComponentActivity() {
             }
         }
 
-        override fun describeTarget(): String {
+        override fun describeTarget(targetOverride: WebViewTarget): String {
             val cfg = controller.config.value
-            return "${cfg.macroTarget.shortLabel}/${if (cfg.dispatchMode == InputDispatchMode.NATIVE_EVENT) "Native" else "JS"}"
+            val targetLabel = when (targetOverride) {
+                WebViewTarget.ACCOUNT_1 -> "A1"
+                WebViewTarget.ACCOUNT_2 -> "A2"
+                WebViewTarget.DEFAULT -> cfg.macroTarget.shortLabel
+            }
+            return "$targetLabel/${if (cfg.dispatchMode == InputDispatchMode.NATIVE_EVENT) "Native" else "JS"}"
+        }
+
+        override fun detectTargetForScreenPoint(screenX: Float, screenY: Float): WebViewTarget {
+            refreshLiveScreenRects()
+            val layout = controller.config.value.layoutMode
+            if (layout == DualLayoutMode.SINGLE_ACCT_1) return WebViewTarget.ACCOUNT_1
+            if (layout == DualLayoutMode.SINGLE_ACCT_2) return WebViewTarget.ACCOUNT_2
+            val ix = screenX.roundToInt()
+            val iy = screenY.roundToInt()
+            return when {
+                lastActiveAcct1Rect.width() > 20 && lastActiveAcct1Rect.contains(ix, iy) -> WebViewTarget.ACCOUNT_1
+                lastActiveAcct2Rect.width() > 20 && lastActiveAcct2Rect.contains(ix, iy) -> WebViewTarget.ACCOUNT_2
+                else -> WebViewTarget.DEFAULT
+            }
         }
     }
 
@@ -214,8 +255,8 @@ class DualWebActivity : ComponentActivity() {
                             wv.reload()
                         }
                     },
-                    onOpenFloatingBuilder = { selectedMacro ->
-                        openFloatingBuilderOverlay(selectedMacro)
+                    onOpenFloatingDock = { selectedMacro ->
+                        openFloatingDockOverlay(selectedMacro)
                     },
                     onBackPress = {
                         val wv1 = account1WebView
@@ -262,7 +303,7 @@ class DualWebActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    private fun openFloatingBuilderOverlay(selectedMacro: MacroDefinition?) {
+    private fun openFloatingDockOverlay(selectedMacro: MacroDefinition?) {
         if (!Settings.canDrawOverlays(this)) {
             val intent = Intent(
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -274,6 +315,7 @@ class DualWebActivity : ComponentActivity() {
         if (selectedMacro != null) {
             app.overlayCoordinator.setLoadedMacro(selectedMacro.id, selectedMacro.name)
         }
+        app.overlayCoordinator.setOverlayStudioOpen(false)
         val svcIntent = Intent(this, MacroOverlayService::class.java).apply {
             action = MacroOverlayService.ACTION_SHOW_DOCK
             if (selectedMacro != null) {
@@ -286,7 +328,6 @@ class DualWebActivity : ComponentActivity() {
         } else {
             startService(svcIntent)
         }
-        app.overlayCoordinator.setOverlayStudioOpen(true)
     }
 
     private fun refreshLiveScreenRects() {
@@ -306,9 +347,19 @@ class DualWebActivity : ComponentActivity() {
         }
     }
 
-    private fun resolveTargetAccountForPoint(target: DualWebMacroTarget, screenX: Float, screenY: Float): Int {
+    private fun resolveTargetAccountForPoint(
+        targetOverride: WebViewTarget,
+        defaultTarget: DualWebMacroTarget,
+        screenX: Float,
+        screenY: Float
+    ): Int {
+        when (targetOverride) {
+            WebViewTarget.ACCOUNT_1 -> return 1
+            WebViewTarget.ACCOUNT_2 -> return 2
+            WebViewTarget.DEFAULT -> Unit
+        }
         refreshLiveScreenRects()
-        return when (target) {
+        return when (defaultTarget) {
             DualWebMacroTarget.ACCOUNT_1 -> 1
             DualWebMacroTarget.ACCOUNT_2 -> 2
             DualWebMacroTarget.AUTO_PANE -> {
@@ -329,16 +380,27 @@ class DualWebActivity : ComponentActivity() {
     private fun mapScreenPointToNormalized(account: Int, screenX: Float, screenY: Float): Pair<Float, Float> {
         refreshLiveScreenRects()
         val rect = if (account == 1) lastActiveAcct1Rect else lastActiveAcct2Rect
+        val otherRect = if (account == 1) lastActiveAcct2Rect else lastActiveAcct1Rect
+        val ix = screenX.roundToInt()
+        val iy = screenY.roundToInt()
         val rootW = window.decorView.width.coerceAtLeast(1).toFloat()
         val rootH = window.decorView.height.coerceAtLeast(1).toFloat()
 
-        return if (rect.width() > 20 && rect.height() > 20 && rect.contains(screenX.roundToInt(), screenY.roundToInt())) {
-            val nx = ((screenX - rect.left) / rect.width().toFloat()).coerceIn(0f, 1f)
-            val ny = ((screenY - rect.top) / rect.height().toFloat()).coerceIn(0f, 1f)
-            nx to ny
-        } else {
-            // Fallback: map proportionally across the full screen so coordinates picked in single view still hit the right spot in split view.
-            (screenX / rootW).coerceIn(0f, 1f) to (screenY / rootH).coerceIn(0f, 1f)
+        return when {
+            rect.width() > 20 && rect.height() > 20 && rect.contains(ix, iy) -> {
+                val nx = ((screenX - rect.left) / rect.width().toFloat()).coerceIn(0f, 1f)
+                val ny = ((screenY - rect.top) / rect.height().toFloat()).coerceIn(0f, 1f)
+                nx to ny
+            }
+            otherRect.width() > 20 && otherRect.height() > 20 && otherRect.contains(ix, iy) -> {
+                val nx = ((screenX - otherRect.left) / otherRect.width().toFloat()).coerceIn(0f, 1f)
+                val ny = ((screenY - otherRect.top) / otherRect.height().toFloat()).coerceIn(0f, 1f)
+                nx to ny
+            }
+            else -> {
+                // Fallback: map proportionally across the full screen so coordinates picked in single view still hit the right spot in split view.
+                (screenX / rootW).coerceIn(0f, 1f) to (screenY / rootH).coerceIn(0f, 1f)
+            }
         }
     }
 
@@ -555,7 +617,7 @@ private fun DualWebFullscreenWorkspace(
     onReloadAcct1: () -> Unit,
     onClearAcct1Session: () -> Unit,
     onToggleAcct1Ua: (Boolean) -> Unit,
-    onOpenFloatingBuilder: (MacroDefinition?) -> Unit,
+    onOpenFloatingDock: (MacroDefinition?) -> Unit,
     onBackPress: () -> Unit,
     onExit: () -> Unit
 ) {
@@ -834,7 +896,7 @@ private fun DualWebFullscreenWorkspace(
                     },
                     onStopMacro = { app.interpreter.stop() },
                     onOpenMacroPicker = { showMacroPicker = true },
-                    onOpenFloatingBuilder = { onOpenFloatingBuilder(selectedMacro) },
+                    onOpenFloatingDock = { onOpenFloatingDock(selectedMacro) },
                     onCycleLayout = { controller.cycleLayoutMode() },
                     onCycleTarget = { controller.cycleMacroTarget() },
                     onOpenSettings = { showSettingsSheet = true }
@@ -852,7 +914,7 @@ private fun DualWebFullscreenWorkspace(
                 app.overlayCoordinator.setLoadedMacro(chosen.id, chosen.name)
                 showMacroPicker = false
             },
-            onOpenFloatingBuilder = { onOpenFloatingBuilder(selectedMacro) },
+            onOpenFloatingDock = { onOpenFloatingDock(selectedMacro) },
             onDismiss = { showMacroPicker = false }
         )
     }
@@ -878,7 +940,7 @@ private fun DualWebFullscreenWorkspace(
                 showSettingsSheet = false
                 controller.launchAccount2Activity(adjacentSplitScreen = adjacent)
             },
-            onOpenFloatingBuilder = { onOpenFloatingBuilder(selectedMacro) },
+            onOpenFloatingDock = { onOpenFloatingDock(selectedMacro) },
             onToggleBadges = { controller.setShowAccountBadges(it) },
             onExitDualClient = {
                 showSettingsSheet = false

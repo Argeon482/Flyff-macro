@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -114,6 +115,7 @@ import com.example.model.TapStep
 import com.example.model.TouchGuardPolicy
 import com.example.model.VarComparator
 import com.example.model.VarOperation
+import com.example.model.WebViewTarget
 import com.example.ui.components.TemplateCropEditorContent
 import com.example.ui.components.TemplateThumbnailPreview
 import com.example.vision.ScreenDetector
@@ -1339,11 +1341,20 @@ private fun OverlayStepEditor(
                 var y by remember(step) { mutableStateOf(step.y.toInt().toString()) }
                 var hold by remember(step) { mutableStateOf(step.holdMs.toString()) }
                 var jitter by remember(step) { mutableStateOf(step.jitterPx.toString()) }
+                var targetWebView by remember(step) { mutableStateOf(step.targetWebView) }
+
+                OverlayWebViewTargetSelector(selected = targetWebView, onSelect = { targetWebView = it })
 
                 OutlinedButton(
                     onClick = {
                         onLaunchPicker(
-                            step.copy(label = label, enabled = enabled, x = x.toFloatOrNull() ?: step.x, y = y.toFloatOrNull() ?: step.y),
+                            step.copy(
+                                label = label,
+                                enabled = enabled,
+                                x = x.toFloatOrNull() ?: step.x,
+                                y = y.toFloatOrNull() ?: step.y,
+                                targetWebView = targetWebView
+                            ),
                             PickerMode.PICK_TAP
                         )
                     },
@@ -1371,7 +1382,8 @@ private fun OverlayStepEditor(
                             x = x.toFloatOrNull() ?: step.x,
                             y = y.toFloatOrNull() ?: step.y,
                             holdMs = (hold.toLongOrNull() ?: step.holdMs).coerceAtLeast(10L),
-                            jitterPx = (jitter.toIntOrNull() ?: step.jitterPx).coerceAtLeast(0)
+                            jitterPx = (jitter.toIntOrNull() ?: step.jitterPx).coerceAtLeast(0),
+                            targetWebView = targetWebView
                         )
                     )
                 }
@@ -1383,6 +1395,9 @@ private fun OverlayStepEditor(
                 var ex by remember(step) { mutableStateOf(step.endX.toInt().toString()) }
                 var ey by remember(step) { mutableStateOf(step.endY.toInt().toString()) }
                 var dur by remember(step) { mutableStateOf(step.durationMs.toString()) }
+                var targetWebView by remember(step) { mutableStateOf(step.targetWebView) }
+
+                OverlayWebViewTargetSelector(selected = targetWebView, onSelect = { targetWebView = it })
 
                 OutlinedButton(
                     onClick = {
@@ -1394,7 +1409,8 @@ private fun OverlayStepEditor(
                                 startY = sy.toFloatOrNull() ?: step.startY,
                                 endX = ex.toFloatOrNull() ?: step.endX,
                                 endY = ey.toFloatOrNull() ?: step.endY,
-                                durationMs = (dur.toLongOrNull() ?: step.durationMs).coerceAtLeast(60L)
+                                durationMs = (dur.toLongOrNull() ?: step.durationMs).coerceAtLeast(60L),
+                                targetWebView = targetWebView
                             ),
                             PickerMode.PICK_SWIPE
                         )
@@ -1424,7 +1440,8 @@ private fun OverlayStepEditor(
                             startY = sy.toFloatOrNull() ?: step.startY,
                             endX = ex.toFloatOrNull() ?: step.endX,
                             endY = ey.toFloatOrNull() ?: step.endY,
-                            durationMs = (dur.toLongOrNull() ?: step.durationMs).coerceAtLeast(60L)
+                            durationMs = (dur.toLongOrNull() ?: step.durationMs).coerceAtLeast(60L),
+                            targetWebView = targetWebView
                         )
                     )
                 }
@@ -1458,6 +1475,9 @@ private fun OverlayStepEditor(
                 var useShift by remember(step) { mutableStateOf((step.metaState and KeyEvent.META_SHIFT_ON) != 0) }
                 var useCtrl by remember(step) { mutableStateOf((step.metaState and KeyEvent.META_CTRL_ON) != 0) }
                 var useAlt by remember(step) { mutableStateOf((step.metaState and KeyEvent.META_ALT_ON) != 0) }
+                var targetWebView by remember(step) { mutableStateOf(step.targetWebView) }
+
+                OverlayWebViewTargetSelector(selected = targetWebView, onSelect = { targetWebView = it })
 
                 Text("Category", color = StudioCyan, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1527,7 +1547,8 @@ private fun OverlayStepEditor(
                             customKeyCode = keyCode,
                             keyLabel = resolvedLabel,
                             holdMs = (holdStr.toLongOrNull() ?: step.holdMs).coerceIn(10L, 5000L),
-                            metaState = meta
+                            metaState = meta,
+                            targetWebView = targetWebView
                         )
                     )
                 }
@@ -1569,6 +1590,7 @@ private fun OverlayStepEditor(
                 var hex by remember(step) { mutableStateOf(step.targetHexColor) }
                 var tol by remember(step) { mutableStateOf(step.tolerancePct.toString()) }
                 var tapOnMatch by remember(step) { mutableStateOf(step.tapOnMatch) }
+                var targetWebView by remember(step) { mutableStateOf(step.targetWebView) }
                 var thenAct by remember(step) { mutableStateOf(step.thenAction) }
                 var thenJump by remember(step) { mutableStateOf(step.thenJumpStepId) }
                 var elseAct by remember(step) { mutableStateOf(step.elseAction) }
@@ -1588,7 +1610,8 @@ private fun OverlayStepEditor(
                                 x = x.toIntOrNull() ?: step.x,
                                 y = y.toIntOrNull() ?: step.y,
                                 targetHexColor = hex.trim().ifBlank { step.targetHexColor },
-                                tolerancePct = (tol.toIntOrNull() ?: step.tolerancePct).coerceIn(0, 100)
+                                tolerancePct = (tol.toIntOrNull() ?: step.tolerancePct).coerceIn(0, 100),
+                                targetWebView = targetWebView
                             ),
                             PickerMode.PICK_COLOR
                         )
@@ -1618,6 +1641,9 @@ private fun OverlayStepEditor(
                     Text("Tap on match", color = StudioText, fontSize = 13.sp)
                     Switch(checked = tapOnMatch, onCheckedChange = { tapOnMatch = it })
                 }
+                if (tapOnMatch) {
+                    OverlayWebViewTargetSelector(selected = targetWebView, onSelect = { targetWebView = it })
+                }
                 OverlayBranchPicker("THEN", thenAct, thenJump, allSteps, StudioEmerald) { a, j -> thenAct = a; thenJump = j }
                 OverlayBranchPicker("ELSE", elseAct, elseJump, allSteps, StudioAmber) { a, j -> elseAct = a; elseJump = j }
 
@@ -1634,7 +1660,8 @@ private fun OverlayStepEditor(
                             thenAction = thenAct,
                             thenJumpStepId = thenJump,
                             elseAction = elseAct,
-                            elseJumpStepId = elseJump
+                            elseJumpStepId = elseJump,
+                            targetWebView = targetWebView
                         )
                     )
                 }
@@ -1645,6 +1672,7 @@ private fun OverlayStepEditor(
                 var tplName by remember(step) { mutableStateOf(step.templateName) }
                 var conf by remember(step) { mutableStateOf(step.minConfidencePct.toString()) }
                 var tapOnMatch by remember(step) { mutableStateOf(step.tapOnMatch) }
+                var targetWebView by remember(step) { mutableStateOf(step.targetWebView) }
                 var sLeft by remember(step) { mutableStateOf(step.searchLeft) }
                 var sTop by remember(step) { mutableStateOf(step.searchTop) }
                 var sRight by remember(step) { mutableStateOf(step.searchRight) }
@@ -1671,7 +1699,8 @@ private fun OverlayStepEditor(
                                     searchLeft = sLeft,
                                     searchTop = sTop,
                                     searchRight = sRight,
-                                    searchBottom = sBottom
+                                    searchBottom = sBottom,
+                                    targetWebView = targetWebView
                                 ),
                                 PickerMode.PICK_TEMPLATE_CROP
                             )
@@ -1693,7 +1722,8 @@ private fun OverlayStepEditor(
                                     searchLeft = sLeft,
                                     searchTop = sTop,
                                     searchRight = sRight,
-                                    searchBottom = sBottom
+                                    searchBottom = sBottom,
+                                    targetWebView = targetWebView
                                 ),
                                 PickerMode.PICK_SEARCH_ROI
                             )
@@ -1724,7 +1754,8 @@ private fun OverlayStepEditor(
                                     thenAction = thenAct,
                                     thenJumpStepId = thenJump,
                                     elseAction = elseAct,
-                                    elseJumpStepId = elseJump
+                                    elseJumpStepId = elseJump,
+                                    targetWebView = targetWebView
                                 )
                             )
                         }
@@ -1763,6 +1794,9 @@ private fun OverlayStepEditor(
                     Text("Tap matched center", color = StudioText, fontSize = 13.sp)
                     Switch(checked = tapOnMatch, onCheckedChange = { tapOnMatch = it })
                 }
+                if (tapOnMatch) {
+                    OverlayWebViewTargetSelector(selected = targetWebView, onSelect = { targetWebView = it })
+                }
                 OverlayBranchPicker("THEN", thenAct, thenJump, allSteps, StudioEmerald) { a, j -> thenAct = a; thenJump = j }
                 OverlayBranchPicker("ELSE", elseAct, elseJump, allSteps, StudioAmber) { a, j -> elseAct = a; elseJump = j }
 
@@ -1782,7 +1816,8 @@ private fun OverlayStepEditor(
                             thenAction = thenAct,
                             thenJumpStepId = thenJump,
                             elseAction = elseAct,
-                            elseJumpStepId = elseJump
+                            elseJumpStepId = elseJump,
+                            targetWebView = targetWebView
                         )
                     )
                 }
@@ -1959,6 +1994,55 @@ private fun OverlayBranchPicker(
 }
 
 @Composable
+private fun OverlayWebViewTargetSelector(
+    selected: WebViewTarget,
+    onSelect: (WebViewTarget) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = "Target WebView",
+            color = StudioCyan,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            val ordered = listOf(
+                WebViewTarget.ACCOUNT_1,
+                WebViewTarget.ACCOUNT_2,
+                WebViewTarget.DEFAULT
+            )
+            ordered.forEach { target ->
+                val accent = when (target) {
+                    WebViewTarget.ACCOUNT_1 -> StudioCyan
+                    WebViewTarget.ACCOUNT_2 -> StudioEmerald
+                    WebViewTarget.DEFAULT -> StudioAmber
+                }
+                val chipLabel = when (target) {
+                    WebViewTarget.ACCOUNT_1 -> "A1 (Main)"
+                    WebViewTarget.ACCOUNT_2 -> "A2 (:acct2)"
+                    WebViewTarget.DEFAULT -> "Auto"
+                }
+                FilterChip(
+                    selected = selected == target,
+                    onClick = { onSelect(target) },
+                    label = { Text(chipLabel, fontSize = 11.sp, maxLines = 1) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = accent.copy(alpha = 0.22f),
+                        selectedLabelColor = accent
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun OverlaySaveBtn(onClick: () -> Unit) {
     Button(
         onClick = onClick,
@@ -1977,16 +2061,22 @@ private fun stepAccentColor(step: MacroStep): Color = when (step) {
     is StopStep -> StudioRose
 }
 
+private fun webViewPrefix(target: WebViewTarget): String = when (target) {
+    WebViewTarget.ACCOUNT_1 -> "[A1] "
+    WebViewTarget.ACCOUNT_2 -> "[A2] "
+    WebViewTarget.DEFAULT -> ""
+}
+
 private fun stepSummaryText(step: MacroStep, functions: List<MacroFunction> = emptyList()): String = when (step) {
-    is TapStep -> "(${step.x.toInt()}, ${step.y.toInt()}) • ${step.holdMs}ms"
-    is SwipeStep -> "(${step.startX.toInt()},${step.startY.toInt()})->(${step.endX.toInt()},${step.endY.toInt()})"
+    is TapStep -> "${webViewPrefix(step.targetWebView)}(${step.x.toInt()}, ${step.y.toInt()}) • ${step.holdMs}ms"
+    is SwipeStep -> "${webViewPrefix(step.targetWebView)}(${step.startX.toInt()},${step.startY.toInt()})->(${step.endX.toInt()},${step.endY.toInt()})"
     is DelayStep -> "${step.minMs}–${step.maxMs}ms"
-    is KeyPressStep -> "KEY_${step.formattedBinding().uppercase()} • ${step.holdMs}ms"
+    is KeyPressStep -> "${webViewPrefix(step.targetWebView)}KEY_${step.formattedBinding().uppercase()} • ${step.holdMs}ms"
     is SetVariableStep -> "${step.variableName} ${step.operation.name} ${step.valueExpression}"
     is LoopStartStep -> if (step.iterations <= 0) "WHILE ${step.conditionVar}" else "REPEAT ${step.iterations}x"
     is LoopEndStep -> "END LOOP"
-    is IfColorStep -> "(${step.x},${step.y}) ${step.targetHexColor}"
-    is IfImageStep -> "${step.templateName} >= ${step.minConfidencePct}%"
+    is IfColorStep -> "${if (step.tapOnMatch) webViewPrefix(step.targetWebView) else ""}(${step.x},${step.y}) ${step.targetHexColor}"
+    is IfImageStep -> "${if (step.tapOnMatch) webViewPrefix(step.targetWebView) else ""}${step.templateName} >= ${step.minConfidencePct}%"
     is IfVariableStep -> "${step.variableName} ${step.comparator.name} ${step.compareValue}"
     is JumpStep -> "-> ${step.targetStepId.take(6)}"
     is CallFunctionStep -> {

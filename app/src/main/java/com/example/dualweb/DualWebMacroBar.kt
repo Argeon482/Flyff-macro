@@ -27,8 +27,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.DragIndicator
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -97,7 +97,7 @@ fun FloatingSelectedMacroBar(
     onStartMacro: () -> Unit,
     onStopMacro: () -> Unit,
     onOpenMacroPicker: () -> Unit,
-    onOpenFloatingBuilder: () -> Unit,
+    onOpenFloatingDock: () -> Unit,
     onCycleLayout: () -> Unit,
     onCycleTarget: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -362,16 +362,16 @@ fun FloatingSelectedMacroBar(
                 }
             }
 
-            // Floating Builder button
+            // Floating Dock button (opens compact Floating Dock only)
             IconButton(
-                onClick = onOpenFloatingBuilder,
+                onClick = onOpenFloatingDock,
                 modifier = Modifier
                     .size(48.dp)
-                    .testTag("open_floating_builder_btn")
+                    .testTag("open_floating_dock_btn")
             ) {
                 Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = "Open Floating Macro Builder",
+                    imageVector = Icons.Default.Layers,
+                    contentDescription = "Open Floating Dock",
                     tint = AmberLogic
                 )
             }
@@ -411,7 +411,7 @@ fun SelectMacroDialog(
     macros: List<MacroDefinition>,
     selectedMacroId: String?,
     onSelectMacro: (MacroDefinition) -> Unit,
-    onOpenFloatingBuilder: () -> Unit,
+    onOpenFloatingDock: () -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -422,7 +422,7 @@ fun SelectMacroDialog(
             if (macros.isEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "No macros saved yet. Open the Floating Builder to create a macro right over your Dual Flyff screen.",
+                        text = "No macros saved yet. Create a macro in Studio or launch the Floating Dock over Dual Flyff.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary
                     )
@@ -473,13 +473,13 @@ fun SelectMacroDialog(
             Button(
                 onClick = {
                     onDismiss()
-                    onOpenFloatingBuilder()
+                    onOpenFloatingDock()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = AmberLogic, contentColor = ObsidianBg)
             ) {
-                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.Layers, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Floating Builder", fontWeight = FontWeight.Bold)
+                Text("Floating Dock", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -509,7 +509,7 @@ fun DualWebSettingsSheet(
     onClearAcct1Session: () -> Unit,
     onClearAcct2Session: () -> Unit,
     onOpenAcct2SplitActivity: (Boolean) -> Unit,
-    onOpenFloatingBuilder: () -> Unit,
+    onOpenFloatingDock: () -> Unit,
     onToggleBadges: (Boolean) -> Unit,
     onExitDualClient: () -> Unit
 ) {
@@ -637,8 +637,8 @@ fun DualWebSettingsSheet(
 
             HorizontalDivider(color = HairlineBorder)
 
-            // Macro Target WebView
-            Text("MACRO TARGET WEBVIEW", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+            // Default Macro Target WebView (overridden by per-step A1 / A2 selection)
+            Text("DEFAULT MACRO TARGET (WHEN STEP = AUTO)", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -660,7 +660,7 @@ fun DualWebSettingsSheet(
                 }
             }
             Text(
-                text = config.macroTarget.description,
+                text = "${config.macroTarget.description} Steps set explicitly to A1 (Main) or A2 (:acct2) always route to their chosen WebView.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary
             )
@@ -723,16 +723,16 @@ fun DualWebSettingsSheet(
                 Button(
                     onClick = {
                         onDismiss()
-                        onOpenFloatingBuilder()
+                        onOpenFloatingDock()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = AmberLogic, contentColor = ObsidianBg),
                     modifier = Modifier
                         .weight(1f)
                         .height(48.dp)
                 ) {
-                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Layers, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Floating Builder", fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text("Floating Dock", fontWeight = FontWeight.Bold, maxLines = 1)
                 }
                 OutlinedButton(
                     onClick = { onOpenAcct2SplitActivity(false) },

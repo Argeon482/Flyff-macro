@@ -40,6 +40,7 @@ import com.example.model.MacroDefinition
 import com.example.model.MacroStep
 import com.example.model.SwipeStep
 import com.example.model.TapStep
+import com.example.model.WebViewTarget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -229,6 +230,7 @@ class MacroOverlayService : Service() {
                 val shizukuStatus by app.shizukuBridge.status.collectAsState()
                 val hwDiagnostics by app.shizukuBridge.diagnostics.collectAsState()
                 val captureActive by app.screenDetector.isActive.collectAsState()
+                val dualWebActive by app.dualWebInputBridge.isActive.collectAsState()
 
                 FloatingControlDock(
                     overlayState = overlayState,
@@ -236,6 +238,7 @@ class MacroOverlayService : Service() {
                     shizukuStatus = shizukuStatus,
                     hardwareDiagnostics = hwDiagnostics,
                     screenCaptureActive = captureActive,
+                    dualWebActive = dualWebActive,
                     onDragDelta = { dx, dy ->
                         dockParams?.let { p ->
                             p.x += dx
@@ -810,20 +813,35 @@ class MacroOverlayService : Service() {
                 is PickerResult.TapPicked -> TapStep(
                     label = "Tap #${macro.steps.size + 1}",
                     x = result.x,
-                    y = result.y
+                    y = result.y,
+                    targetWebView = if (app.dualWebInputBridge.isRoutingActive()) {
+                        app.dualWebInputBridge.detectTargetForScreenPoint(result.x, result.y)
+                    } else {
+                        WebViewTarget.DEFAULT
+                    }
                 )
                 is PickerResult.SwipePicked -> SwipeStep(
                     label = "Swipe #${macro.steps.size + 1}",
                     startX = result.startX,
                     startY = result.startY,
                     endX = result.endX,
-                    endY = result.endY
+                    endY = result.endY,
+                    targetWebView = if (app.dualWebInputBridge.isRoutingActive()) {
+                        app.dualWebInputBridge.detectTargetForScreenPoint(result.startX, result.startY)
+                    } else {
+                        WebViewTarget.DEFAULT
+                    }
                 )
                 is PickerResult.ColorPicked -> IfColorStep(
                     label = "Color #${macro.steps.size + 1}",
                     x = result.x,
                     y = result.y,
-                    targetHexColor = result.hexColor
+                    targetHexColor = result.hexColor,
+                    targetWebView = if (app.dualWebInputBridge.isRoutingActive()) {
+                        app.dualWebInputBridge.detectTargetForScreenPoint(result.x.toFloat(), result.y.toFloat())
+                    } else {
+                        WebViewTarget.DEFAULT
+                    }
                 )
                 is PickerResult.TemplatePicked -> IfImageStep(
                     label = "Image #${macro.steps.size + 1}",
@@ -848,9 +866,22 @@ class MacroOverlayService : Service() {
             return newStep.id
         }
 
+        fun resolvePickedTarget(current: WebViewTarget, px: Float, py: Float): WebViewTarget {
+            if (current != WebViewTarget.DEFAULT) return current
+            return if (app.dualWebInputBridge.isRoutingActive()) {
+                app.dualWebInputBridge.detectTargetForScreenPoint(px, py)
+            } else {
+                WebViewTarget.DEFAULT
+            }
+        }
+
         fun applyResultToStep(step: MacroStep): MacroStep = when (result) {
             is PickerResult.TapPicked -> if (step is TapStep) {
-                step.copy(x = result.x, y = result.y)
+                step.copy(
+                    x = result.x,
+                    y = result.y,
+                    targetWebView = resolvePickedTarget(step.targetWebView, result.x, result.y)
+                )
             } else step
 
             is PickerResult.SwipePicked -> if (step is SwipeStep) {
@@ -858,12 +889,18 @@ class MacroOverlayService : Service() {
                     startX = result.startX,
                     startY = result.startY,
                     endX = result.endX,
-                    endY = result.endY
+                    endY = result.endY,
+                    targetWebView = resolvePickedTarget(step.targetWebView, result.startX, result.startY)
                 )
             } else step
 
             is PickerResult.ColorPicked -> if (step is IfColorStep) {
-                step.copy(x = result.x, y = result.y, targetHexColor = result.hexColor)
+                step.copy(
+                    x = result.x,
+                    y = result.y,
+                    targetHexColor = result.hexColor,
+                    targetWebView = resolvePickedTarget(step.targetWebView, result.x.toFloat(), result.y.toFloat())
+                )
             } else step
 
             is PickerResult.TemplatePicked -> if (step is IfImageStep) {

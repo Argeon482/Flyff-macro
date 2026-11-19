@@ -53,6 +53,13 @@ enum class TouchGuardPolicy(val displayLabel: String, val cooldownMs: Long, val 
 }
 
 @Serializable
+enum class WebViewTarget(val displayLabel: String, val shortLabel: String) {
+    DEFAULT("Auto (Bar Default)", "Auto"),
+    ACCOUNT_1("A1 (Main)", "A1"),
+    ACCOUNT_2("A2 (:acct2)", "A2")
+}
+
+@Serializable
 sealed interface MacroStep {
     val id: String
     val label: String
@@ -68,7 +75,8 @@ data class TapStep(
     val x: Float = 540f,
     val y: Float = 960f,
     val holdMs: Long = 40L,
-    val jitterPx: Int = 4
+    val jitterPx: Int = 4,
+    val targetWebView: WebViewTarget = WebViewTarget.DEFAULT
 ) : MacroStep
 
 @Serializable
@@ -82,7 +90,8 @@ data class SwipeStep(
     val endX: Float = 540f,
     val endY: Float = 600f,
     val durationMs: Long = 320L,
-    val interpolateSteps: Int = 18
+    val interpolateSteps: Int = 18,
+    val targetWebView: WebViewTarget = WebViewTarget.DEFAULT
 ) : MacroStep
 
 @Serializable
@@ -105,7 +114,8 @@ data class KeyPressStep(
     val customKeyCode: Int? = null,
     val keyLabel: String = "",
     val holdMs: Long = 35L,
-    val metaState: Int = 0
+    val metaState: Int = 0,
+    val targetWebView: WebViewTarget = WebViewTarget.DEFAULT
 ) : MacroStep {
     fun resolvedKeyCode(): Int = customKeyCode ?: keyAction.keyCode
 
@@ -165,7 +175,8 @@ data class IfColorStep(
     val thenAction: BranchAction = BranchAction.CONTINUE_NEXT,
     val thenJumpStepId: String? = null,
     val elseAction: BranchAction = BranchAction.SKIP_NEXT,
-    val elseJumpStepId: String? = null
+    val elseJumpStepId: String? = null,
+    val targetWebView: WebViewTarget = WebViewTarget.DEFAULT
 ) : MacroStep
 
 @Serializable
@@ -185,7 +196,8 @@ data class IfImageStep(
     val thenAction: BranchAction = BranchAction.CONTINUE_NEXT,
     val thenJumpStepId: String? = null,
     val elseAction: BranchAction = BranchAction.SKIP_NEXT,
-    val elseJumpStepId: String? = null
+    val elseJumpStepId: String? = null,
+    val targetWebView: WebViewTarget = WebViewTarget.DEFAULT
 ) : MacroStep
 
 @Serializable
@@ -286,4 +298,13 @@ fun MacroStep.withEnabled(enabled: Boolean): MacroStep = when (this) {
     is JumpStep -> copy(enabled = enabled)
     is CallFunctionStep -> copy(enabled = enabled)
     is StopStep -> copy(enabled = enabled)
+}
+
+fun MacroStep.stepWebViewTarget(): WebViewTarget? = when (this) {
+    is TapStep -> targetWebView
+    is SwipeStep -> targetWebView
+    is KeyPressStep -> targetWebView
+    is IfColorStep -> if (tapOnMatch) targetWebView else null
+    is IfImageStep -> if (tapOnMatch) targetWebView else null
+    else -> null
 }

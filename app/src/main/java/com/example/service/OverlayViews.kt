@@ -107,6 +107,7 @@ fun FloatingControlDock(
     shizukuStatus: ShizukuStatus,
     hardwareDiagnostics: HardwareInputDiagnostics = HardwareInputDiagnostics(),
     screenCaptureActive: Boolean,
+    dualWebActive: Boolean = false,
     onDragDelta: (dx: Int, dy: Int) -> Unit,
     onPlayOrPause: () -> Unit,
     onStop: () -> Unit,
@@ -122,7 +123,7 @@ fun FloatingControlDock(
         ExecutionStatus.RUNNING -> StudioEmerald
         ExecutionStatus.PAUSED -> StudioAmber
         ExecutionStatus.ERROR -> StudioRose
-        ExecutionStatus.IDLE -> if (shizukuStatus.state == ShizukuConnectionState.CONNECTED) StudioCyan else StudioMuted
+        ExecutionStatus.IDLE -> if (dualWebActive || shizukuStatus.state == ShizukuConnectionState.CONNECTED) StudioCyan else StudioMuted
     }
 
     Surface(
@@ -237,8 +238,12 @@ fun FloatingControlDock(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Shizuku: ${shizukuStatus.state.name.lowercase().replace('_', ' ')}",
-                            color = if (shizukuStatus.state == ShizukuConnectionState.CONNECTED) StudioEmerald else StudioAmber,
+                            text = if (dualWebActive) {
+                                "Dual WebView: LIVE"
+                            } else {
+                                "Shizuku: ${shizukuStatus.state.name.lowercase().replace('_', ' ')}"
+                            },
+                            color = if (dualWebActive || shizukuStatus.state == ShizukuConnectionState.CONNECTED) StudioEmerald else StudioAmber,
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace
                         )
@@ -251,14 +256,16 @@ fun FloatingControlDock(
                     }
 
                     Text(
-                        text = if (hardwareDiagnostics.touchMonitorRunning) {
+                        text = if (dualWebActive) {
+                            "Routing: Per-step A1 / A2 direct WebView"
+                        } else if (hardwareDiagnostics.touchMonitorRunning) {
                             "Touch Guard: Live evdev (Slot 0)"
                         } else if (hardwareDiagnostics.devInputReadable) {
                             "Touch Guard: evdev standby"
                         } else {
                             "Touch Guard: Outside-touch watcher"
                         },
-                        color = if (hardwareDiagnostics.touchMonitorRunning) StudioEmerald else StudioMuted,
+                        color = if (dualWebActive || hardwareDiagnostics.touchMonitorRunning) StudioEmerald else StudioMuted,
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace
                     )

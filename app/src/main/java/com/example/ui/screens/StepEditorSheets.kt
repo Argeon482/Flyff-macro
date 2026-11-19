@@ -39,6 +39,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -85,6 +86,7 @@ import com.example.model.SystemKeyAction
 import com.example.model.TapStep
 import com.example.model.VarComparator
 import com.example.model.VarOperation
+import com.example.model.WebViewTarget
 import com.example.service.PickerMode
 import com.example.ui.components.TemplateCropEditorDialog
 import com.example.ui.components.TemplateThumbnailPreview
@@ -314,13 +316,20 @@ fun EditStepBottomSheet(
                     var yStr by remember(step) { mutableStateOf(step.y.toInt().toString()) }
                     var holdStr by remember(step) { mutableStateOf(step.holdMs.toString()) }
                     var jitterStr by remember(step) { mutableStateOf(step.jitterPx.toString()) }
+                    var targetWebView by remember(step) { mutableStateOf(step.targetWebView) }
+
+                    WebViewTargetSelector(
+                        selected = targetWebView,
+                        onSelect = { targetWebView = it }
+                    )
 
                     OutlinedButton(
                         onClick = {
                             val current = step.copy(
                                 label = label,
                                 x = xStr.toFloatOrNull() ?: step.x,
-                                y = yStr.toFloatOrNull() ?: step.y
+                                y = yStr.toFloatOrNull() ?: step.y,
+                                targetWebView = targetWebView
                             )
                             onSave(current)
                             onPickOnScreen(current, PickerMode.PICK_TAP)
@@ -351,7 +360,8 @@ fun EditStepBottomSheet(
                                 x = xStr.toFloatOrNull() ?: step.x,
                                 y = yStr.toFloatOrNull() ?: step.y,
                                 holdMs = (holdStr.toLongOrNull() ?: step.holdMs).coerceAtLeast(10L),
-                                jitterPx = (jitterStr.toIntOrNull() ?: step.jitterPx).coerceAtLeast(0)
+                                jitterPx = (jitterStr.toIntOrNull() ?: step.jitterPx).coerceAtLeast(0),
+                                targetWebView = targetWebView
                             )
                         )
                     }
@@ -363,10 +373,16 @@ fun EditStepBottomSheet(
                     var ex by remember(step) { mutableStateOf(step.endX.toInt().toString()) }
                     var ey by remember(step) { mutableStateOf(step.endY.toInt().toString()) }
                     var dur by remember(step) { mutableStateOf(step.durationMs.toString()) }
+                    var targetWebView by remember(step) { mutableStateOf(step.targetWebView) }
+
+                    WebViewTargetSelector(
+                        selected = targetWebView,
+                        onSelect = { targetWebView = it }
+                    )
 
                     OutlinedButton(
                         onClick = {
-                            val current = step.copy(label = label)
+                            val current = step.copy(label = label, targetWebView = targetWebView)
                             onSave(current)
                             onPickOnScreen(current, PickerMode.PICK_SWIPE)
                         },
@@ -397,7 +413,8 @@ fun EditStepBottomSheet(
                                 startY = sy.toFloatOrNull() ?: step.startY,
                                 endX = ex.toFloatOrNull() ?: step.endX,
                                 endY = ey.toFloatOrNull() ?: step.endY,
-                                durationMs = (dur.toLongOrNull() ?: step.durationMs).coerceAtLeast(60L)
+                                durationMs = (dur.toLongOrNull() ?: step.durationMs).coerceAtLeast(60L),
+                                targetWebView = targetWebView
                             )
                         )
                     }
@@ -431,6 +448,12 @@ fun EditStepBottomSheet(
                     var useShift by remember(step) { mutableStateOf((step.metaState and KeyEvent.META_SHIFT_ON) != 0) }
                     var useCtrl by remember(step) { mutableStateOf((step.metaState and KeyEvent.META_CTRL_ON) != 0) }
                     var useAlt by remember(step) { mutableStateOf((step.metaState and KeyEvent.META_ALT_ON) != 0) }
+                    var targetWebView by remember(step) { mutableStateOf(step.targetWebView) }
+
+                    WebViewTargetSelector(
+                        selected = targetWebView,
+                        onSelect = { targetWebView = it }
+                    )
 
                     Text("Key Category", style = MaterialTheme.typography.labelMedium, color = ElectricCyan)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -506,7 +529,8 @@ fun EditStepBottomSheet(
                                 customKeyCode = keyCode,
                                 keyLabel = resolvedLabel,
                                 holdMs = (holdStr.toLongOrNull() ?: step.holdMs).coerceIn(10L, 5000L),
-                                metaState = meta
+                                metaState = meta,
+                                targetWebView = targetWebView
                             )
                         )
                     }
@@ -596,6 +620,7 @@ fun EditStepBottomSheet(
                     var hex by remember(step) { mutableStateOf(step.targetHexColor) }
                     var tol by remember(step) { mutableStateOf(step.tolerancePct.toString()) }
                     var tapOnMatch by remember(step) { mutableStateOf(step.tapOnMatch) }
+                    var targetWebView by remember(step) { mutableStateOf(step.targetWebView) }
                     var thenAction by remember(step) { mutableStateOf(step.thenAction) }
                     var thenJumpId by remember(step) { mutableStateOf(step.thenJumpStepId) }
                     var elseAction by remember(step) { mutableStateOf(step.elseAction) }
@@ -603,7 +628,7 @@ fun EditStepBottomSheet(
 
                     OutlinedButton(
                         onClick = {
-                            val current = step.copy(label = label)
+                            val current = step.copy(label = label, targetWebView = targetWebView)
                             onSave(current)
                             onPickOnScreen(current, PickerMode.PICK_COLOR)
                         },
@@ -651,6 +676,13 @@ fun EditStepBottomSheet(
                         Switch(checked = tapOnMatch, onCheckedChange = { tapOnMatch = it })
                     }
 
+                    if (tapOnMatch) {
+                        WebViewTargetSelector(
+                            selected = targetWebView,
+                            onSelect = { targetWebView = it }
+                        )
+                    }
+
                     BranchSelector("IF MATCHED (THEN)", thenAction, thenJumpId, allSteps, EmeraldRun) { a, j ->
                         thenAction = a
                         thenJumpId = j
@@ -672,7 +704,8 @@ fun EditStepBottomSheet(
                                 thenAction = thenAction,
                                 thenJumpStepId = thenJumpId,
                                 elseAction = elseAction,
-                                elseJumpStepId = elseJumpId
+                                elseJumpStepId = elseJumpId,
+                                targetWebView = targetWebView
                             )
                         )
                     }
@@ -688,6 +721,7 @@ fun EditStepBottomSheet(
                     var sBottom by remember(step) { mutableStateOf(step.searchBottom) }
                     var confStr by remember(step) { mutableStateOf(step.minConfidencePct.toString()) }
                     var tapOnMatch by remember(step) { mutableStateOf(step.tapOnMatch) }
+                    var targetWebView by remember(step) { mutableStateOf(step.targetWebView) }
                     var thenAction by remember(step) { mutableStateOf(step.thenAction) }
                     var thenJumpId by remember(step) { mutableStateOf(step.thenJumpStepId) }
                     var elseAction by remember(step) { mutableStateOf(step.elseAction) }
@@ -705,7 +739,8 @@ fun EditStepBottomSheet(
                                     searchLeft = sLeft,
                                     searchTop = sTop,
                                     searchRight = sRight,
-                                    searchBottom = sBottom
+                                    searchBottom = sBottom,
+                                    targetWebView = targetWebView
                                 )
                                 onSave(current)
                                 onPickOnScreen(current, PickerMode.PICK_TEMPLATE_CROP)
@@ -727,7 +762,8 @@ fun EditStepBottomSheet(
                                     searchLeft = sLeft,
                                     searchTop = sTop,
                                     searchRight = sRight,
-                                    searchBottom = sBottom
+                                    searchBottom = sBottom,
+                                    targetWebView = targetWebView
                                 )
                                 onSave(current)
                                 onPickOnScreen(current, PickerMode.PICK_SEARCH_ROI)
@@ -812,6 +848,13 @@ fun EditStepBottomSheet(
                         Switch(checked = tapOnMatch, onCheckedChange = { tapOnMatch = it })
                     }
 
+                    if (tapOnMatch) {
+                        WebViewTargetSelector(
+                            selected = targetWebView,
+                            onSelect = { targetWebView = it }
+                        )
+                    }
+
                     BranchSelector("IF MATCHED (THEN)", thenAction, thenJumpId, allSteps, EmeraldRun) { a, j ->
                         thenAction = a
                         thenJumpId = j
@@ -836,7 +879,8 @@ fun EditStepBottomSheet(
                                 thenAction = thenAction,
                                 thenJumpStepId = thenJumpId,
                                 elseAction = elseAction,
-                                elseJumpStepId = elseJumpId
+                                elseJumpStepId = elseJumpId,
+                                targetWebView = targetWebView
                             )
                         )
                     }
@@ -1041,6 +1085,55 @@ private fun BranchSelector(
                         label = { Text("#${idx + 1} ${s.label}") }
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WebViewTargetSelector(
+    selected: WebViewTarget,
+    onSelect: (WebViewTarget) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = "TARGET WEBVIEW",
+            style = MaterialTheme.typography.labelMedium,
+            color = TextSecondary
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            val ordered = listOf(
+                WebViewTarget.ACCOUNT_1,
+                WebViewTarget.ACCOUNT_2,
+                WebViewTarget.DEFAULT
+            )
+            ordered.forEach { target ->
+                val accent = when (target) {
+                    WebViewTarget.ACCOUNT_1 -> ElectricCyan
+                    WebViewTarget.ACCOUNT_2 -> EmeraldRun
+                    WebViewTarget.DEFAULT -> AmberLogic
+                }
+                val labelText = when (target) {
+                    WebViewTarget.ACCOUNT_1 -> "A1 (Main)"
+                    WebViewTarget.ACCOUNT_2 -> "A2 (:acct2)"
+                    WebViewTarget.DEFAULT -> "Auto"
+                }
+                FilterChip(
+                    selected = selected == target,
+                    onClick = { onSelect(target) },
+                    label = { Text(labelText, maxLines = 1) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = accent.copy(alpha = 0.22f),
+                        selectedLabelColor = accent
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .testTag("step_target_${target.name.lowercase()}")
+                )
             }
         }
     }

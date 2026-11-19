@@ -95,6 +95,8 @@ import com.example.model.StopStep
 import com.example.model.SwipeStep
 import com.example.model.TapStep
 import com.example.model.TouchGuardPolicy
+import com.example.model.WebViewTarget
+import com.example.model.stepWebViewTarget
 import com.example.model.withEnabled
 import com.example.service.PickerMode
 import com.example.ui.theme.AmberLogic
@@ -830,6 +832,23 @@ private fun StepNodeCard(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = accent
                             )
+                            val targetWv = step.stepWebViewTarget()
+                            if (targetWv == WebViewTarget.ACCOUNT_1 || targetWv == WebViewTarget.ACCOUNT_2) {
+                                val badgeColor = if (targetWv == WebViewTarget.ACCOUNT_1) ElectricCyan else EmeraldRun
+                                Surface(
+                                    color = badgeColor.copy(alpha = 0.18f),
+                                    shape = RoundedCornerShape(6.dp),
+                                    border = BorderStroke(1.dp, badgeColor.copy(alpha = 0.55f))
+                                ) {
+                                    Text(
+                                        text = targetWv.shortLabel,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = badgeColor,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
                             Text(
                                 text = step.label,
                                 style = MaterialTheme.typography.titleSmall,
