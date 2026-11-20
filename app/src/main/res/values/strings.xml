@@ -18,4 +18,11 @@
     <string name="dual_quick_type_force_ime">Force IME</string>
     <string name="dual_quick_type_full_a2">Full A2</string>
     <string name="dual_ua_keyboard_hint">Desktop UA keeps PC hotbars active (use the Keyboard button on the bar to type in chat/forms). Switch to Mobile UA to let Flyff trigger touch keyboards automatically.</string>
+    <string name="dual_keep_login_reset_desc">Reset keyboard and cache while keeping login</string>
+    <string name="dual_auto_reset_cache_title">Auto safe cache reset on reopen</string>
+    <string name="dual_auto_reset_cache_subtitle">Clears stale WebView cache on launch while keeping login cookies and auto-login.</string>
+    <string name="dual_confirm_clear_title">Log out and clear all data?</string>
+    <string name="dual_confirm_clear_body">This removes all cookies and storage for %1$s, so you will need to sign in again. Use the amber broom icon instead to reset keyboard/cache while staying logged in.</string>
+    <string name="dual_confirm_clear_action">Clear &amp; Log Out</string>
+    <string name="dual_cancel">Cancel</string>
 </resources>

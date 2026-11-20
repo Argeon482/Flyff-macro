@@ -28,6 +28,9 @@ interface IAccount2WebViewService {
     );
     boolean dispatchText(String text, boolean pressEnter, int dispatchMode);
 
+    void setAutoResetCacheOnReopen(boolean enabled);
+    void resetAccount2KeepingLogin();
+    void flushAccount2Cookies();
     void clearAccount2Session();
     Bundle getStatus();
 }

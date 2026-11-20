@@ -172,6 +172,18 @@ class Account2HostService : Service() {
             }
         }
 
+        override fun setAutoResetCacheOnReopen(enabled: Boolean) {
+            Account2WebViewManager.setAutoResetCacheOnReopen(enabled)
+        }
+
+        override fun resetAccount2KeepingLogin() {
+            Account2WebViewManager.resetKeepingLogin()
+        }
+
+        override fun flushAccount2Cookies() {
+            Account2WebViewManager.flushCookies()
+        }
+
         override fun clearAccount2Session() {
             Account2WebViewManager.clearSession()
         }

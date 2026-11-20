@@ -30,6 +30,7 @@ object Account2WebViewManager {
     private var contextWrapper: MutableContextWrapper? = null
     private var webView: WebView? = null
     private var desktopUserAgent: Boolean = true
+    private var autoResetCacheOnReopen: Boolean = true
     private var currentUrl: String = DualWebConstants.FLYFF_UNIVERSE_URL
     private var pageTitle: String = ""
     private var hostMode: String = "IDLE"
@@ -38,6 +39,10 @@ object Account2WebViewManager {
 
     fun setSurfaceReattachCallback(callback: (() -> Unit)?) {
         onReattachSurfaceRequested = callback
+    }
+
+    fun setAutoResetCacheOnReopen(enabled: Boolean) {
+        autoResetCacheOnReopen = enabled
     }
 
     fun getOrCreateWebView(hostContext: Context): WebView {
@@ -61,6 +66,9 @@ object Account2WebViewManager {
                 if (title.isNotBlank()) pageTitle = title
             }
         )
+        if (autoResetCacheOnReopen) {
+            WebViewFactory.clearSafeCacheKeepingLogin(created)
+        }
         created.loadUrl(DualWebConstants.FLYFF_UNIVERSE_URL)
         webView = created
         return created
@@ -264,6 +272,20 @@ object Account2WebViewManager {
         mainHandler.post {
             val wv = webView ?: return@post
             WebViewFactory.forceShowSoftKeyboard(wv, mainHandler)
+        }
+    }
+
+    fun resetKeepingLogin() {
+        mainHandler.post {
+            val wv = webView ?: return@post
+            WebViewFactory.resetKeyboardStateKeepingLogin(wv, mainHandler)
+            lastDispatchSummary = "Reset A2 keyboard/cache (login kept)"
+        }
+    }
+
+    fun flushCookies() {
+        mainHandler.post {
+            WebViewFactory.flushCookies()
         }
     }
 

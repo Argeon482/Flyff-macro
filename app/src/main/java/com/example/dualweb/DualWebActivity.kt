@@ -246,6 +246,11 @@ class DualWebActivity : ComponentActivity() {
                         account2SurfaceView = sv
                     },
                     onReloadAcct1 = { account1WebView?.reload() },
+                    onResetAcct1KeepingLogin = {
+                        account1WebView?.let { wv ->
+                            WebViewFactory.resetKeyboardStateKeepingLogin(wv, mainHandler)
+                        }
+                    },
                     onClearAcct1Session = {
                         account1WebView?.let { wv ->
                             WebViewFactory.clearSessionData(wv)
@@ -305,6 +310,12 @@ class DualWebActivity : ComponentActivity() {
         account1WebView?.resumeTimers()
         controller.refreshRemoteStatus()
         account2SurfaceBridge?.tryAttachOrResize()
+    }
+
+    override fun onPause() {
+        WebViewFactory.flushCookies()
+        controller.flushAccount2Cookies()
+        super.onPause()
     }
 
     override fun onDestroy() {
@@ -681,6 +692,7 @@ private fun DualWebFullscreenWorkspace(
     onWebView1Bound: (TouchGatedFrameLayout, WebView) -> Unit,
     onSurfaceView2Bound: (SurfaceView) -> Unit,
     onReloadAcct1: () -> Unit,
+    onResetAcct1KeepingLogin: () -> Unit,
     onClearAcct1Session: () -> Unit,
     onToggleAcct1Ua: (Boolean) -> Unit,
     onOpenFloatingDock: (MacroDefinition?) -> Unit,
@@ -714,6 +726,7 @@ private fun DualWebFullscreenWorkspace(
     var showSettingsSheet by remember { mutableStateOf(false) }
     var showMacroPicker by remember { mutableStateOf(false) }
     var showQuickTypeBar by remember { mutableStateOf(false) }
+    var resetFeedbackMessage by remember { mutableStateOf<String?>(null) }
     var lastTouchedAccount by remember { mutableIntStateOf(1) }
     var quickTypeTargetAccount by remember { mutableIntStateOf(1) }
     var barCollapsed by remember { mutableStateOf(false) }
@@ -821,6 +834,9 @@ private fun DualWebFullscreenWorkspace(
                             context = ctx,
                             desktopUserAgent = config.acct1DesktopUa
                         ).apply {
+                            if (config.autoResetCacheOnReopen) {
+                                WebViewFactory.clearSafeCacheKeepingLogin(this)
+                            }
                             loadUrl(DualWebConstants.FLYFF_UNIVERSE_URL)
                         }
                         TouchGatedFrameLayout(ctx).apply {
@@ -1038,7 +1054,11 @@ private fun DualWebFullscreenWorkspace(
             executionState = executionState,
             mainProcessName = controller.mainProcessName,
             mainProcessPid = controller.mainProcessPid,
-            onDismiss = { showSettingsSheet = false },
+            resetFeedbackMessage = resetFeedbackMessage,
+            onDismiss = {
+                showSettingsSheet = false
+                resetFeedbackMessage = null
+            },
             onSetLayoutMode = { controller.setLayoutMode(it) },
             onSetMacroTarget = { controller.setMacroTarget(it) },
             onSetDispatchMode = { controller.setDispatchMode(it) },
@@ -1046,13 +1066,28 @@ private fun DualWebFullscreenWorkspace(
             onToggleAcct2Ua = { controller.setAcct2DesktopUa(it) },
             onReloadAcct1 = onReloadAcct1,
             onReloadAcct2 = { controller.reloadAccount2() },
-            onClearAcct1Session = onClearAcct1Session,
-            onClearAcct2Session = { controller.clearAccount2Session() },
+            onResetAcct1KeepingLogin = {
+                onResetAcct1KeepingLogin()
+                resetFeedbackMessage = "Reset Account 1 keyboard & cache (login kept)"
+            },
+            onResetAcct2KeepingLogin = {
+                controller.resetAccount2KeepingLogin()
+                resetFeedbackMessage = "Reset Account 2 keyboard & cache (login kept)"
+            },
+            onClearAcct1Session = {
+                onClearAcct1Session()
+                resetFeedbackMessage = "Cleared all Account 1 cookies & storage"
+            },
+            onClearAcct2Session = {
+                controller.clearAccount2Session()
+                resetFeedbackMessage = "Cleared all Account 2 cookies & storage"
+            },
             onOpenAcct2SplitActivity = { adjacent ->
                 showSettingsSheet = false
                 controller.launchAccount2Activity(adjacentSplitScreen = adjacent)
             },
             onOpenFloatingDock = { onOpenFloatingDock(selectedMacro) },
+            onToggleAutoResetCacheOnReopen = { controller.setAutoResetCacheOnReopen(it) },
             onToggleBadges = { controller.setShowAccountBadges(it) },
             onExitDualClient = {
                 showSettingsSheet = false

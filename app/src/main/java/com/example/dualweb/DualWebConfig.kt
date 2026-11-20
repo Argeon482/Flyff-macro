@@ -80,7 +80,8 @@ data class DualWebConfigState(
     val layoutMode: DualLayoutMode = DualLayoutMode.SPLIT_50_50,
     val macroTarget: DualWebMacroTarget = DualWebMacroTarget.ACCOUNT_2,
     val showAccountBadges: Boolean = true,
-    val selectedMacroId: String? = null
+    val selectedMacroId: String? = null,
+    val autoResetCacheOnReopen: Boolean = true
 )
 
 data class DomKeyDescriptor(

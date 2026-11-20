@@ -102,6 +102,66 @@ object WebViewFactory {
         webView.settings.userAgentString = ua
     }
 
+    fun flushCookies() {
+        runCatching { CookieManager.getInstance().flush() }
+    }
+
+    /**
+     * Safe startup/reopen cache hygiene: flushes login cookies to disk and clears only
+     * stale HTTP/script disk cache and form state. Never touches CookieManager or localStorage,
+     * so Flyff Universe auto-login remains 100% intact.
+     */
+    fun clearSafeCacheKeepingLogin(webView: WebView) {
+        flushCookies()
+        webView.clearCache(true)
+        webView.clearFormData()
+    }
+
+    /**
+     * Manual Keep-Login Keyboard Reset for a single WebView:
+     * 1. Flushes cookies to disk (NEVER removes cookies).
+     * 2. Clears HTTP disk cache and form state.
+     * 3. Clears ephemeral sessionStorage, CacheStorage, and ONLY explicit non-auth
+     *    keyboard/IME/input UI keys in localStorage (strictly preserving auth/login/token/char keys).
+     * 4. Reloads Flyff Universe and reclaims native WebView focus.
+     */
+    fun resetKeyboardStateKeepingLogin(
+        webView: WebView,
+        mainHandler: Handler = Handler(Looper.getMainLooper())
+    ) {
+        flushCookies()
+        webView.clearCache(true)
+        webView.clearFormData()
+        webView.visibility = View.VISIBLE
+        webView.isFocusable = true
+        webView.isFocusableInTouchMode = true
+
+        val targetUrl = webView.url
+            ?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+            ?: DualWebConstants.FLYFF_UNIVERSE_URL
+
+        var reloaded = false
+        val performReload = {
+            if (!reloaded) {
+                reloaded = true
+                flushCookies()
+                webView.loadUrl(targetUrl)
+                mainHandler.postDelayed({
+                    webView.isFocusable = true
+                    webView.isFocusableInTouchMode = true
+                    webView.requestFocusFromTouch()
+                }, 180L)
+            }
+        }
+
+        val resetJs = WebViewTextInputHelper.buildKeepLoginKeyboardResetScript()
+        webView.evaluateJavascript(resetJs) {
+            mainHandler.post(performReload)
+        }
+        // Fallback reload in case the page had not finished bootstrapping a JS context yet.
+        mainHandler.postDelayed(performReload, 240L)
+    }
+
     fun clearSessionData(webView: WebView) {
         CookieManager.getInstance().removeAllCookies(null)
         CookieManager.getInstance().flush()
@@ -560,6 +620,80 @@ object WebViewTextInputHelper {
                   enterTarget.dispatchEvent(new KeyboardEvent('keyup', enterInit));
                 }
               } catch (e) {}
+            })();
+        """.trimIndent()
+    }
+
+    private val protectedAuthTokens = listOf(
+        "auth", "login", "token", "session", "user", "account",
+        "char", "server", "jwt", "oauth", "refresh", "cookie",
+        "credential", "gala", "uid", "email", "pass", "remember",
+        "autologin", "profile", "player", "world", "channel"
+    )
+
+    private val prunableInputUiTokens = listOf(
+        "keyboard", "virtualkeyboard", "softinput", "inputmode",
+        "touchmode", "ime", "focusstate", "keybind_ui_cache"
+    )
+
+    /**
+     * Conservative key filter for Keep-Login Keyboard Reset:
+     * NEVER prunes any key related to authentication, login, session, account, or character state.
+     * ONLY prunes keys explicitly related to keyboard/IME/input-mode UI state.
+     */
+    fun shouldPruneLocalStorageKey(key: String): Boolean {
+        val normalized = key.trim().lowercase()
+        if (normalized.isEmpty()) return false
+        if (protectedAuthTokens.any { normalized.contains(it) }) return false
+        return prunableInputUiTokens.any { normalized.contains(it) }
+    }
+
+    /**
+     * Builds a safe JS snippet that clears ephemeral sessionStorage, CacheStorage, and ONLY
+     * non-auth keyboard/IME UI keys in localStorage while preserving login/account/character keys.
+     */
+    fun buildKeepLoginKeyboardResetScript(): String {
+        val protectedJson = protectedAuthTokens.joinToString(",") { JSONObject.quote(it) }
+        val prunableJson = prunableInputUiTokens.joinToString(",") { JSONObject.quote(it) }
+        return """
+            (function() {
+              try {
+                if (document.activeElement && typeof document.activeElement.blur === 'function') {
+                  document.activeElement.blur();
+                }
+              } catch (e) {}
+              try {
+                if (window.sessionStorage) {
+                  window.sessionStorage.clear();
+                }
+              } catch (e) {}
+              try {
+                var protectedTokens = [$protectedJson];
+                var prunableTokens = [$prunableJson];
+                if (window.localStorage) {
+                  var toRemove = [];
+                  for (var i = 0; i < window.localStorage.length; i++) {
+                    var k = window.localStorage.key(i);
+                    if (!k) continue;
+                    var lower = k.toLowerCase();
+                    var isProtected = protectedTokens.some(function(t) { return lower.indexOf(t) !== -1; });
+                    if (isProtected) continue;
+                    var isInputUi = prunableTokens.some(function(t) { return lower.indexOf(t) !== -1; });
+                    if (isInputUi) toRemove.push(k);
+                  }
+                  for (var j = 0; j < toRemove.length; j++) {
+                    window.localStorage.removeItem(toRemove[j]);
+                  }
+                }
+              } catch (e) {}
+              try {
+                if (window.caches && typeof window.caches.keys === 'function') {
+                  window.caches.keys().then(function(names) {
+                    names.forEach(function(name) { window.caches.delete(name); });
+                  });
+                }
+              } catch (e) {}
+              return 'ok';
             })();
         """.trimIndent()
     }

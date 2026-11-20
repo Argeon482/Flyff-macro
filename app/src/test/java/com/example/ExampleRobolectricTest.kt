@@ -12,8 +12,10 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.data.AppDatabase
 import com.example.data.MacroRepository
 import com.example.dualweb.DualLayoutMode
+import com.example.dualweb.DualWebConfigState
 import com.example.dualweb.DualWebInputBridge
 import com.example.dualweb.DualWebMacroDelegate
+import com.example.dualweb.DualWebPreferences
 import com.example.dualweb.WebViewTextInputHelper
 import com.example.engine.ExecutionStatus
 import com.example.engine.MacroInterpreter
@@ -721,5 +723,37 @@ class ExampleRobolectricTest {
         )
         assertTrue(jsNoEnter.contains("""var str = "125000";"""))
         assertTrue(jsNoEnter.contains("if (false)"))
+    }
+
+    @Test
+    fun keepLoginReset_protectsAuthKeysAndPersistsAutoResetPref() {
+        // Auth, session, account, character, and server keys MUST NEVER be pruned
+        assertFalse(WebViewTextInputHelper.shouldPruneLocalStorageKey("auth_token"))
+        assertFalse(WebViewTextInputHelper.shouldPruneLocalStorageKey("flyff_last_character"))
+        assertFalse(WebViewTextInputHelper.shouldPruneLocalStorageKey("gala_session_id"))
+        assertFalse(WebViewTextInputHelper.shouldPruneLocalStorageKey("autoLoginAccount"))
+        assertFalse(WebViewTextInputHelper.shouldPruneLocalStorageKey("user_keyboard_token"))
+        assertFalse(WebViewTextInputHelper.shouldPruneLocalStorageKey("unrelated_setting"))
+
+        // Explicit non-auth keyboard/IME UI keys are pruned cleanly
+        assertTrue(WebViewTextInputHelper.shouldPruneLocalStorageKey("virtualKeyboardEnabled"))
+        assertTrue(WebViewTextInputHelper.shouldPruneLocalStorageKey("flyff_inputMode"))
+        assertTrue(WebViewTextInputHelper.shouldPruneLocalStorageKey("ime_focusState"))
+        assertTrue(WebViewTextInputHelper.shouldPruneLocalStorageKey("touchMode"))
+
+        val resetJs = WebViewTextInputHelper.buildKeepLoginKeyboardResetScript()
+        assertTrue(resetJs.contains("window.sessionStorage.clear()"))
+        assertTrue(resetJs.contains("window.caches.keys()"))
+        assertTrue(resetJs.contains("\"token\""))
+        assertTrue(resetJs.contains("\"keyboard\""))
+
+        // DualWebPreferences defaults autoResetCacheOnReopen = true and persists updates
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val prefs = DualWebPreferences(context)
+        assertTrue(prefs.load().autoResetCacheOnReopen)
+        prefs.save(DualWebConfigState(autoResetCacheOnReopen = false))
+        assertFalse(prefs.load().autoResetCacheOnReopen)
+        prefs.save(DualWebConfigState(autoResetCacheOnReopen = true))
+        assertTrue(prefs.load().autoResetCacheOnReopen)
     }
 }

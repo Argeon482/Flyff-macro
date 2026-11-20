@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -57,6 +58,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -531,6 +536,7 @@ fun DualWebSettingsSheet(
     executionState: RuntimeExecutionState,
     mainProcessName: String,
     mainProcessPid: Int,
+    resetFeedbackMessage: String?,
     onDismiss: () -> Unit,
     onSetLayoutMode: (DualLayoutMode) -> Unit,
     onSetMacroTarget: (DualWebMacroTarget) -> Unit,
@@ -539,14 +545,18 @@ fun DualWebSettingsSheet(
     onToggleAcct2Ua: (Boolean) -> Unit,
     onReloadAcct1: () -> Unit,
     onReloadAcct2: () -> Unit,
+    onResetAcct1KeepingLogin: () -> Unit,
+    onResetAcct2KeepingLogin: () -> Unit,
     onClearAcct1Session: () -> Unit,
     onClearAcct2Session: () -> Unit,
     onOpenAcct2SplitActivity: (Boolean) -> Unit,
     onOpenFloatingDock: () -> Unit,
+    onToggleAutoResetCacheOnReopen: (Boolean) -> Unit,
     onToggleBadges: (Boolean) -> Unit,
     onExitDualClient: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var pendingClearAccount by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -735,13 +745,34 @@ fun DualWebSettingsSheet(
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary
             )
+            if (!resetFeedbackMessage.isNullOrBlank()) {
+                Surface(
+                    color = EmeraldRun.copy(alpha = 0.14f),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, EmeraldRun.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("dual_reset_feedback_banner")
+                ) {
+                    Text(
+                        text = resetFeedbackMessage,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = EmeraldRun,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+            }
             AccountControlRow(
                 title = "Account 1 (Main Process)",
                 accent = ElectricCyan,
                 desktopUa = config.acct1DesktopUa,
                 onToggleUa = onToggleAcct1Ua,
                 onReload = onReloadAcct1,
-                onClearCookies = onClearAcct1Session,
+                onResetKeepingLogin = onResetAcct1KeepingLogin,
+                onClearCookies = {
+                    pendingClearAccount = "Account 1 (Main)" to onClearAcct1Session
+                },
                 tagPrefix = "acct1"
             )
             AccountControlRow(
@@ -750,7 +781,10 @@ fun DualWebSettingsSheet(
                 desktopUa = config.acct2DesktopUa,
                 onToggleUa = onToggleAcct2Ua,
                 onReload = onReloadAcct2,
-                onClearCookies = onClearAcct2Session,
+                onResetKeepingLogin = onResetAcct2KeepingLogin,
+                onClearCookies = {
+                    pendingClearAccount = "Account 2 (:acct2)" to onClearAcct2Session
+                },
                 tagPrefix = "acct2"
             )
 
@@ -802,6 +836,35 @@ fun DualWebSettingsSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 12.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.dual_auto_reset_cache_title),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = stringResource(R.string.dual_auto_reset_cache_subtitle),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary
+                    )
+                }
+                Switch(
+                    checked = config.autoResetCacheOnReopen,
+                    onCheckedChange = onToggleAutoResetCacheOnReopen,
+                    colors = SwitchDefaults.colors(checkedThumbColor = ObsidianBg, checkedTrackColor = EmeraldRun),
+                    modifier = Modifier.testTag("auto_reset_cache_reopen_switch")
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text("Show corner A1 / A2 badges", style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
                 Switch(
                     checked = config.showAccountBadges,
@@ -813,6 +876,38 @@ fun DualWebSettingsSheet(
             Spacer(Modifier.height(24.dp))
         }
     }
+
+    pendingClearAccount?.let { (accountLabel, confirmClearAction) ->
+        AlertDialog(
+            onDismissRequest = { pendingClearAccount = null },
+            containerColor = SlateSurface,
+            title = { Text(stringResource(R.string.dual_confirm_clear_title), color = TextPrimary) },
+            text = {
+                Text(
+                    text = stringResource(R.string.dual_confirm_clear_body, accountLabel),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        pendingClearAccount = null
+                        confirmClearAction()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = RoseAlert, contentColor = Color.White),
+                    modifier = Modifier.testTag("confirm_clear_session_btn")
+                ) {
+                    Text(stringResource(R.string.dual_confirm_clear_action), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingClearAccount = null }) {
+                    Text(stringResource(R.string.dual_cancel), color = TextSecondary)
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -822,6 +917,7 @@ private fun AccountControlRow(
     desktopUa: Boolean,
     onToggleUa: (Boolean) -> Unit,
     onReload: () -> Unit,
+    onResetKeepingLogin: () -> Unit,
     onClearCookies: () -> Unit,
     tagPrefix: String
 ) {
@@ -833,14 +929,22 @@ private fun AccountControlRow(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+            modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp)
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, color = TextPrimary)
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
                 Text(
                     text = if (desktopUa) "Desktop Chrome UA (full hotbars)" else "Mobile WebView UA",
                     style = MaterialTheme.typography.labelSmall,
-                    color = accent
+                    color = accent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
             IconButton(
@@ -864,12 +968,24 @@ private fun AccountControlRow(
                 Icon(Icons.Default.Refresh, contentDescription = "Reload $title", tint = TextPrimary)
             }
             IconButton(
+                onClick = onResetKeepingLogin,
+                modifier = Modifier
+                    .size(48.dp)
+                    .testTag("${tagPrefix}_keep_login_reset")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CleaningServices,
+                    contentDescription = "${stringResource(R.string.dual_keep_login_reset_desc)} ($title)",
+                    tint = AmberLogic
+                )
+            }
+            IconButton(
                 onClick = onClearCookies,
                 modifier = Modifier
                     .size(48.dp)
                     .testTag("${tagPrefix}_clear_cookies")
             ) {
-                Icon(Icons.Default.DeleteSweep, contentDescription = "Clear cookies for $title only", tint = RoseAlert)
+                Icon(Icons.Default.DeleteSweep, contentDescription = "Clear cookies and log out $title", tint = RoseAlert)
             }
         }
     }

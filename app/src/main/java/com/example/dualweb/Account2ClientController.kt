@@ -65,7 +65,10 @@ class Account2ClientController(
             val svc = IAccount2WebViewService.Stub.asInterface(binder)
             service = svc
             bound = true
-            runCatching { svc.setDesktopUserAgent(_config.value.acct2DesktopUa) }
+            runCatching {
+                svc.setDesktopUserAgent(_config.value.acct2DesktopUa)
+                svc.setAutoResetCacheOnReopen(_config.value.autoResetCacheOnReopen)
+            }
             refreshRemoteStatus()
             startStatusPolling()
             onServiceConnectedCallback?.invoke()
@@ -249,8 +252,22 @@ class Account2ClientController(
         updateConfig { it.copy(showAccountBadges = show) }
     }
 
+    fun setAutoResetCacheOnReopen(enabled: Boolean) {
+        updateConfig { it.copy(autoResetCacheOnReopen = enabled) }
+        runCatching { service?.setAutoResetCacheOnReopen(enabled) }
+    }
+
     fun reloadAccount2() {
         runCatching { service?.reload() }
+    }
+
+    fun resetAccount2KeepingLogin() {
+        runCatching { service?.resetAccount2KeepingLogin() }
+        refreshRemoteStatus()
+    }
+
+    fun flushAccount2Cookies() {
+        runCatching { service?.flushAccount2Cookies() }
     }
 
     fun clearAccount2Session() {
