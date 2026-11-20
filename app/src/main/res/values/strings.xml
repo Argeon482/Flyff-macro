@@ -11,4 +11,11 @@
     <string name="action_export_json">Export JSON</string>
     <string name="dual_flyff_title">Flyff Dual Client</string>
     <string name="dual_flyff_acct2_title">Flyff Account 2</string>
+    <string name="dual_quick_type_open">Open Quick Type keyboard</string>
+    <string name="dual_quick_type_placeholder">Type chat, login, or amount…</string>
+    <string name="dual_quick_type_send">Send</string>
+    <string name="dual_quick_type_send_enter">Send ↵</string>
+    <string name="dual_quick_type_force_ime">Force IME</string>
+    <string name="dual_quick_type_full_a2">Full A2</string>
+    <string name="dual_ua_keyboard_hint">Desktop UA keeps PC hotbars active (use the Keyboard button on the bar to type in chat/forms). Switch to Mobile UA to let Flyff trigger touch keyboards automatically.</string>
 </resources>

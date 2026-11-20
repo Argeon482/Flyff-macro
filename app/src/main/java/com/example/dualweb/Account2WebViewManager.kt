@@ -74,6 +74,8 @@ object Account2WebViewManager {
         val wv = getOrCreateWebView(hostContext)
         detachFromCurrentParent(wv)
         wv.visibility = View.VISIBLE
+        wv.isFocusable = true
+        wv.isFocusableInTouchMode = true
         container.removeAllViews()
         container.addView(
             wv,
@@ -86,6 +88,9 @@ object Account2WebViewManager {
         // Never allow Chromium to throttle rAF or pause WebGL timers.
         wv.onResume()
         wv.resumeTimers()
+        if (modeLabel == "SPLIT_ACTIVITY") {
+            mainHandler.post { wv.requestFocusFromTouch() }
+        }
         return wv
     }
 
@@ -233,6 +238,32 @@ object Account2WebViewManager {
                     durationMs,
                     steps
                 )
+        }
+    }
+
+    fun dispatchText(
+        text: String,
+        pressEnter: Boolean,
+        mode: InputDispatchMode
+    ): Boolean {
+        val wv = webView ?: return false
+        val count = dispatchCounter.incrementAndGet()
+        val preview = text.take(12).let { if (text.length > 12) "$it…" else it }
+        val suffix = if (pressEnter) " ↵" else ""
+        lastDispatchSummary = "${if (mode == InputDispatchMode.NATIVE_EVENT) "NATIVE" else "JS"} TEXT \"$preview\"$suffix -> A2 #$count"
+
+        return when (mode) {
+            InputDispatchMode.NATIVE_EVENT ->
+                WebViewFactory.dispatchTextNative(wv, text, pressEnter, mainHandler)
+            InputDispatchMode.JS_DOM ->
+                WebViewFactory.dispatchTextJs(wv, text, pressEnter)
+        }
+    }
+
+    fun requestSoftKeyboard() {
+        mainHandler.post {
+            val wv = webView ?: return@post
+            WebViewFactory.forceShowSoftKeyboard(wv, mainHandler)
         }
     }
 

@@ -57,6 +57,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -71,6 +72,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -116,6 +118,8 @@ class DualWebActivity : ComponentActivity() {
     private var lastActiveAcct1Rect: Rect = Rect()
     @Volatile
     private var lastActiveAcct2Rect: Rect = Rect()
+    @Volatile
+    private var isQuickTypeOpen: Boolean = false
 
     private val macroDelegate = object : DualWebMacroDelegate {
         override fun dispatchKey(
@@ -258,6 +262,21 @@ class DualWebActivity : ComponentActivity() {
                     onOpenFloatingDock = { selectedMacro ->
                         openFloatingDockOverlay(selectedMacro)
                     },
+                    onSendQuickText = { account, text, pressEnter ->
+                        dispatchTextToAccount(account, text, pressEnter)
+                    },
+                    onSendQuickKey = { account, keyCode ->
+                        dispatchQuickKeyToAccount(account, keyCode)
+                    },
+                    onForceNativeImeAcct1 = {
+                        account1WebView?.let { WebViewFactory.forceShowSoftKeyboard(it, mainHandler) }
+                    },
+                    onQuickTypeVisibilityChanged = { open ->
+                        isQuickTypeOpen = open
+                        if (!open) {
+                            mainHandler.postDelayed({ hideSystemBarsIfImeHidden() }, 180L)
+                        }
+                    },
                     onBackPress = {
                         val wv1 = account1WebView
                         if (wv1 != null && controller.config.value.layoutMode != DualLayoutMode.SINGLE_ACCT_2 && wv1.canGoBack()) {
@@ -275,13 +294,13 @@ class DualWebActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
-            hideSystemBars()
+            hideSystemBarsIfImeHidden()
         }
     }
 
     override fun onResume() {
         super.onResume()
-        hideSystemBars()
+        hideSystemBarsIfImeHidden()
         account1WebView?.onResume()
         account1WebView?.resumeTimers()
         controller.refreshRemoteStatus()
@@ -468,19 +487,49 @@ class DualWebActivity : ComponentActivity() {
         return true
     }
 
+    private fun dispatchTextToAccount(account: Int, text: String, pressEnter: Boolean) {
+        val mode = controller.config.value.dispatchMode
+        if (account == 1) {
+            val wv1 = account1WebView ?: return
+            mainHandler.post {
+                when (mode) {
+                    InputDispatchMode.NATIVE_EVENT ->
+                        WebViewFactory.dispatchTextNative(wv1, text, pressEnter, mainHandler)
+                    InputDispatchMode.JS_DOM ->
+                        WebViewFactory.dispatchTextJs(wv1, text, pressEnter)
+                }
+            }
+        } else {
+            controller.dispatchTextDirect(text, pressEnter)
+        }
+    }
+
+    private fun dispatchQuickKeyToAccount(account: Int, keyCode: Int) {
+        val mode = controller.config.value.dispatchMode
+        if (account == 1) {
+            dispatchKeyToAcct1(keyCode, holdMs = 40L, metaState = 0, mode = mode)
+        } else {
+            controller.dispatchKeyDirect(keyCode, holdMs = 40L, metaState = 0)
+        }
+    }
+
     private fun configureFullscreenWindow() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes = window.attributes.apply {
                 layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
         }
-        hideSystemBars()
+        hideSystemBarsIfImeHidden()
     }
 
-    private fun hideSystemBars() {
-        WindowCompat.setDecorFitsSystemWindows(window, false)
+    private fun hideSystemBarsIfImeHidden() {
+        if (isQuickTypeOpen) return
+        val imeVisible = ViewCompat.getRootWindowInsets(window.decorView)
+            ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+        if (imeVisible) return
         val controller = WindowInsetsControllerCompat(window, window.decorView)
         controller.systemBarsBehavior =
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -501,12 +550,25 @@ class DualWebActivity : ComponentActivity() {
  * Wraps WebView 1 so that in `Single: Account 2` view, WebView 1 stays `View.VISIBLE`
  * at full viewport resolution (preventing Chromium rAF/WebGL throttling) while never
  * intercepting or consuming user touches meant for Account 2's SurfaceView.
+ * Also reclaims Android View focus on user ACTION_DOWN so Compose overlays never block IME.
  */
 private class TouchGatedFrameLayout(context: Context) : FrameLayout(context) {
     var allowUserTouch: Boolean = true
+    var onUserTouchDown: (() -> Unit)? = null
 
     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
         if (!allowUserTouch) return false
+        if (ev?.actionMasked == MotionEvent.ACTION_DOWN) {
+            val child = getChildAt(0)
+            if (child != null) {
+                if (!child.isFocusable) child.isFocusable = true
+                if (!child.isFocusableInTouchMode) child.isFocusableInTouchMode = true
+                if (!child.hasFocus()) {
+                    child.requestFocusFromTouch()
+                }
+            }
+            onUserTouchDown?.invoke()
+        }
         return super.dispatchTouchEvent(ev)
     }
 }
@@ -523,6 +585,7 @@ private class Account2SurfaceBridge(
     private var isSurfaceReady: Boolean = false
     private var isAttached: Boolean = false
     var allowUserTouchForwarding: Boolean = true
+    var onUserTouchDown: (() -> Unit)? = null
 
     @SuppressLint("ClickableViewAccessibility")
     fun bindSurfaceView(view: SurfaceView) {
@@ -530,6 +593,9 @@ private class Account2SurfaceBridge(
         view.holder.addCallback(this)
         view.setOnTouchListener { _, event ->
             if (!allowUserTouchForwarding) return@setOnTouchListener false
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                onUserTouchDown?.invoke()
+            }
             controller.dispatchUserMotionEvent(event)
             true
         }
@@ -618,6 +684,10 @@ private fun DualWebFullscreenWorkspace(
     onClearAcct1Session: () -> Unit,
     onToggleAcct1Ua: (Boolean) -> Unit,
     onOpenFloatingDock: (MacroDefinition?) -> Unit,
+    onSendQuickText: (account: Int, text: String, pressEnter: Boolean) -> Unit,
+    onSendQuickKey: (account: Int, keyCode: Int) -> Unit,
+    onForceNativeImeAcct1: () -> Unit,
+    onQuickTypeVisibilityChanged: (Boolean) -> Unit,
     onBackPress: () -> Unit,
     onExit: () -> Unit
 ) {
@@ -643,12 +713,20 @@ private fun DualWebFullscreenWorkspace(
 
     var showSettingsSheet by remember { mutableStateOf(false) }
     var showMacroPicker by remember { mutableStateOf(false) }
+    var showQuickTypeBar by remember { mutableStateOf(false) }
+    var lastTouchedAccount by remember { mutableIntStateOf(1) }
+    var quickTypeTargetAccount by remember { mutableIntStateOf(1) }
     var barCollapsed by remember { mutableStateOf(false) }
     var barOffsetX by remember { mutableFloatStateOf(0f) }
     var barOffsetY by remember { mutableFloatStateOf(0f) }
 
+    LaunchedEffect(showQuickTypeBar) {
+        onQuickTypeVisibilityChanged(showQuickTypeBar)
+    }
+
     BackHandler {
         when {
+            showQuickTypeBar -> showQuickTypeBar = false
             showMacroPicker -> showMacroPicker = false
             showSettingsSheet -> showSettingsSheet = false
             else -> onBackPress()
@@ -722,6 +800,7 @@ private fun DualWebFullscreenWorkspace(
 
             // Keep SurfaceView 2 touch forwarding synced with layout mode
             surfaceBridge.allowUserTouchForwarding = acct2Interactive
+            surfaceBridge.onUserTouchDown = { lastTouchedAccount = 2 }
 
             // ACCOUNT 1: Main-process persistent WebView (always View.VISIBLE; touch-gated when A2 Full)
             Box(
@@ -746,6 +825,7 @@ private fun DualWebFullscreenWorkspace(
                         }
                         TouchGatedFrameLayout(ctx).apply {
                             allowUserTouch = acct1Interactive
+                            onUserTouchDown = { lastTouchedAccount = 1 }
                             addView(
                                 wv,
                                 ViewGroup.LayoutParams(
@@ -758,6 +838,7 @@ private fun DualWebFullscreenWorkspace(
                     },
                     update = { container ->
                         container.allowUserTouch = acct1Interactive
+                        container.onUserTouchDown = { lastTouchedAccount = 1 }
                         val child = container.getChildAt(0)
                         if (child != null && child.visibility != View.VISIBLE) {
                             child.visibility = View.VISIBLE
@@ -897,9 +978,40 @@ private fun DualWebFullscreenWorkspace(
                     onStopMacro = { app.interpreter.stop() },
                     onOpenMacroPicker = { showMacroPicker = true },
                     onOpenFloatingDock = { onOpenFloatingDock(selectedMacro) },
+                    onOpenQuickType = {
+                        quickTypeTargetAccount = WebViewTextInputHelper.resolveQuickTypeInitialAccount(
+                            layoutMode = config.layoutMode,
+                            lastTouchedAccount = lastTouchedAccount
+                        )
+                        showQuickTypeBar = !showQuickTypeBar
+                    },
                     onCycleLayout = { controller.cycleLayoutMode() },
                     onCycleTarget = { controller.cycleMacroTarget() },
                     onOpenSettings = { showSettingsSheet = true }
+                )
+            }
+
+            if (showQuickTypeBar) {
+                DualWebQuickTypeBar(
+                    targetAccount = quickTypeTargetAccount,
+                    onSelectTargetAccount = { selected ->
+                        quickTypeTargetAccount = selected
+                        lastTouchedAccount = selected
+                    },
+                    onSendText = { acct, text, pressEnter ->
+                        onSendQuickText(acct, text, pressEnter)
+                    },
+                    onSendSpecialKey = { acct, keyCode ->
+                        onSendQuickKey(acct, keyCode)
+                    },
+                    onForceNativeImeAcct1 = onForceNativeImeAcct1,
+                    onOpenFullAcct2Window = {
+                        controller.launchAccount2Activity(adjacentSplitScreen = false)
+                    },
+                    onDismiss = { showQuickTypeBar = false },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .zIndex(20f)
                 )
             }
         }

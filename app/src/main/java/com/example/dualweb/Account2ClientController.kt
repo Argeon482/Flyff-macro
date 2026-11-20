@@ -197,6 +197,16 @@ class Account2ClientController(
         return ok
     }
 
+    fun dispatchTextDirect(text: String, pressEnter: Boolean): Boolean {
+        val svc = service ?: return false
+        val modeWire = _config.value.dispatchMode.wireValue
+        val ok = runCatching {
+            svc.dispatchText(text, pressEnter, modeWire)
+        }.getOrDefault(false)
+        if (ok) refreshRemoteStatus()
+        return ok
+    }
+
     fun setAcct1DesktopUa(desktop: Boolean) {
         updateConfig { it.copy(acct1DesktopUa = desktop) }
     }

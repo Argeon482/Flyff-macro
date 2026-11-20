@@ -161,6 +161,17 @@ class Account2HostService : Service() {
             }
         }
 
+        override fun dispatchText(
+            text: String?,
+            pressEnter: Boolean,
+            dispatchMode: Int
+        ): Boolean {
+            val mode = InputDispatchMode.fromWire(dispatchMode)
+            return runOnMainSync {
+                Account2WebViewManager.dispatchText(text.orEmpty(), pressEnter, mode)
+            }
+        }
+
         override fun clearAccount2Session() {
             Account2WebViewManager.clearSession()
         }

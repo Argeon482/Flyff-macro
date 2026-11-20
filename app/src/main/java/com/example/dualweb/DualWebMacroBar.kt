@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,9 +63,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.R
 import com.example.engine.ExecutionStatus
 import com.example.engine.RuntimeExecutionState
 import com.example.model.MacroDefinition
@@ -98,6 +101,7 @@ fun FloatingSelectedMacroBar(
     onStopMacro: () -> Unit,
     onOpenMacroPicker: () -> Unit,
     onOpenFloatingDock: () -> Unit,
+    onOpenQuickType: () -> Unit,
     onCycleLayout: () -> Unit,
     onCycleTarget: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -162,6 +166,19 @@ fun FloatingSelectedMacroBar(
                 }
 
                 IconButton(
+                    onClick = onOpenQuickType,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("collapsed_quick_type_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Keyboard,
+                        contentDescription = stringResource(R.string.dual_quick_type_open),
+                        tint = ElectricCyan
+                    )
+                }
+
+                IconButton(
                     onClick = if (isRunning) onStopMacro else onStartMacro,
                     modifier = Modifier
                         .size(48.dp)
@@ -187,13 +204,15 @@ fun FloatingSelectedMacroBar(
         ),
         shadowElevation = 10.dp,
         modifier = modifier
-            .widthIn(max = 580.dp)
+            .widthIn(max = 620.dp)
             .testTag("dual_selected_macro_bar")
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 4.dp, vertical = 4.dp)
         ) {
             // Drag handle + connection/run dot
             Box(
@@ -360,6 +379,20 @@ fun FloatingSelectedMacroBar(
                         maxLines = 1
                     )
                 }
+            }
+
+            // Quick Type Native Keyboard Bridge button (works in 50/50 & Desktop UA)
+            IconButton(
+                onClick = onOpenQuickType,
+                modifier = Modifier
+                    .size(48.dp)
+                    .testTag("macro_bar_quick_type")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Keyboard,
+                    contentDescription = stringResource(R.string.dual_quick_type_open),
+                    tint = ElectricCyan
+                )
             }
 
             // Floating Dock button (opens compact Floating Dock only)
@@ -697,6 +730,11 @@ fun DualWebSettingsSheet(
 
             // Per-Account UA & Session Controls
             Text("PER-ACCOUNT USER-AGENT & SESSIONS", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+            Text(
+                text = stringResource(R.string.dual_ua_keyboard_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary
+            )
             AccountControlRow(
                 title = "Account 1 (Main Process)",
                 accent = ElectricCyan,

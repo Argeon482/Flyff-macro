@@ -26,6 +26,7 @@ interface IAccount2WebViewService {
         int steps,
         int dispatchMode
     );
+    boolean dispatchText(String text, boolean pressEnter, int dispatchMode);
 
     void clearAccount2Session();
     Bundle getStatus();

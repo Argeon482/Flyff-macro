@@ -11,6 +11,7 @@ import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
@@ -365,4 +366,202 @@ object WebViewFactory {
         webView.evaluateJavascript(js, null)
         return true
     }
+
+    /**
+     * Streams a string of characters (and optional Enter key) directly to the WebView via
+     * native `KeyEvent`s (`isTrusted: true`). Characters not mapped by `VIRTUAL_KEYBOARD`
+     * fall back cleanly to JS text insertion so Unicode/symbols never silently drop.
+     */
+    fun dispatchTextNative(
+        webView: WebView,
+        text: String,
+        pressEnter: Boolean,
+        mainHandler: Handler = Handler(Looper.getMainLooper())
+    ): Boolean {
+        if (text.isEmpty() && !pressEnter) return false
+        if (webView.visibility != View.VISIBLE) {
+            webView.visibility = View.VISIBLE
+        }
+        webView.isFocusable = true
+        webView.isFocusableInTouchMode = true
+        if (!webView.hasFocus()) {
+            webView.requestFocus()
+        }
+
+        val kcm = runCatching { KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD) }.getOrNull()
+        var delayMs = 0L
+        val stepDelayMs = 10L
+
+        text.forEach { ch ->
+            val mappedEvents = runCatching { kcm?.getEvents(charArrayOf(ch)) }.getOrNull()
+            if (mappedEvents != null && mappedEvents.isNotEmpty()) {
+                val scheduledDelay = delayMs
+                mainHandler.postDelayed({
+                    val baseTime = SystemClock.uptimeMillis()
+                    mappedEvents.forEachIndexed { idx, raw ->
+                        val timed = KeyEvent(
+                            baseTime,
+                            baseTime + idx,
+                            raw.action,
+                            raw.keyCode,
+                            raw.repeatCount,
+                            raw.metaState,
+                            KeyCharacterMap.VIRTUAL_KEYBOARD,
+                            raw.scanCode,
+                            raw.flags,
+                            InputDevice.SOURCE_KEYBOARD
+                        )
+                        webView.dispatchKeyEvent(timed)
+                    }
+                }, scheduledDelay)
+            } else {
+                val fallbackChar = ch.toString()
+                val scheduledDelay = delayMs
+                mainHandler.postDelayed({
+                    dispatchTextJs(webView, fallbackChar, pressEnter = false)
+                }, scheduledDelay)
+            }
+            delayMs += stepDelayMs
+        }
+
+        if (pressEnter) {
+            val enterDelay = delayMs + 12L
+            mainHandler.postDelayed({
+                dispatchKeyNative(
+                    webView = webView,
+                    keyCode = KeyEvent.KEYCODE_ENTER,
+                    holdMs = 35L,
+                    metaState = 0,
+                    mainHandler = mainHandler
+                )
+            }, enterDelay)
+        }
+        return true
+    }
+
+    /**
+     * JS DOM text-input fallback: inserts text into any focused HTML input/textarea/contenteditable
+     * AND fires synthetic KeyboardEvents for canvas-driven chat/login UIs (e.g. Flyff Universe).
+     */
+    fun dispatchTextJs(
+        webView: WebView,
+        text: String,
+        pressEnter: Boolean
+    ): Boolean {
+        if (text.isEmpty() && !pressEnter) return false
+        val js = WebViewTextInputHelper.buildJsTextInjectionScript(text, pressEnter)
+        webView.evaluateJavascript(js, null)
+        return true
+    }
+
+    /**
+     * Explicitly reclaims native Android View focus for the WebView and asks InputMethodManager
+     * to open the soft keyboard, nudging any active editable DOM element at the same time.
+     */
+    fun forceShowSoftKeyboard(
+        webView: WebView,
+        mainHandler: Handler = Handler(Looper.getMainLooper())
+    ) {
+        webView.visibility = View.VISIBLE
+        webView.isFocusable = true
+        webView.isFocusableInTouchMode = true
+        webView.requestFocus()
+        webView.requestFocusFromTouch()
+
+        val focusJs = """
+            (function() {
+              try {
+                var el = document.activeElement;
+                if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) {
+                  el.focus();
+                } else {
+                  var candidate = document.querySelector('input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), [contenteditable="true"]');
+                  if (candidate) candidate.focus();
+                }
+              } catch (e) {}
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(focusJs, null)
+
+        mainHandler.postDelayed({
+            if (!webView.hasFocus()) {
+                webView.requestFocusFromTouch()
+            }
+            val imm = webView.context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+            imm?.showSoftInput(webView, InputMethodManager.SHOW_IMPLICIT)
+        }, 60L)
+    }
 }
+
+object WebViewTextInputHelper {
+
+    /**
+     * Chooses the initial Quick Type target account (1 or 2) based on the active layout mode
+     * and whichever WebView pane the user touched most recently.
+     */
+    fun resolveQuickTypeInitialAccount(
+        layoutMode: DualLayoutMode,
+        lastTouchedAccount: Int
+    ): Int = when (layoutMode) {
+        DualLayoutMode.SINGLE_ACCT_1 -> 1
+        DualLayoutMode.SINGLE_ACCT_2 -> 2
+        DualLayoutMode.SPLIT_50_50 -> if (lastTouchedAccount == 2) 2 else 1
+    }
+
+    /**
+     * Generates a self-contained JS snippet that inserts text into focused DOM inputs or
+     * dispatches per-character KeyboardEvents to WebGL canvases, followed by Enter if requested.
+     */
+    fun buildJsTextInjectionScript(text: String, pressEnter: Boolean): String {
+        val quotedText = JSONObject.quote(text)
+        return """
+            (function() {
+              try {
+                var str = $quotedText;
+                var el = document.activeElement;
+                var isEditable = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+                if (isEditable && str.length > 0) {
+                  if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                    var start = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
+                    var end = typeof el.selectionEnd === 'number' ? el.selectionEnd : el.value.length;
+                    var nextVal = el.value.slice(0, start) + str + el.value.slice(end);
+                    var proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+                    var desc = Object.getOwnPropertyDescriptor(proto, 'value');
+                    if (desc && desc.set) {
+                      desc.set.call(el, nextVal);
+                    } else {
+                      el.value = nextVal;
+                    }
+                    if (typeof el.setSelectionRange === 'function') {
+                      var caret = start + str.length;
+                      el.setSelectionRange(caret, caret);
+                    }
+                    el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, data: str, inputType: 'insertText' }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                  } else {
+                    document.execCommand('insertText', false, str);
+                  }
+                } else if (str.length > 0) {
+                  var target = document.querySelector('canvas') || el || document.body || document;
+                  for (var i = 0; i < str.length; i++) {
+                    var ch = str.charAt(i);
+                    var codePoint = ch.charCodeAt(0);
+                    var init = { key: ch, keyCode: codePoint, which: codePoint, charCode: codePoint, bubbles: true, cancelable: true, composed: true };
+                    target.dispatchEvent(new KeyboardEvent('keydown', init));
+                    target.dispatchEvent(new KeyboardEvent('keypress', init));
+                    target.dispatchEvent(new KeyboardEvent('keyup', init));
+                  }
+                }
+                if ($pressEnter) {
+                  var enterTarget = isEditable ? el : (document.querySelector('canvas') || el || document.body || document);
+                  var enterInit = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true, composed: true };
+                  enterTarget.dispatchEvent(new KeyboardEvent('keydown', enterInit));
+                  enterTarget.dispatchEvent(new KeyboardEvent('keypress', enterInit));
+                  enterTarget.dispatchEvent(new KeyboardEvent('keyup', enterInit));
+                }
+              } catch (e) {}
+            })();
+        """.trimIndent()
+    }
+}
+

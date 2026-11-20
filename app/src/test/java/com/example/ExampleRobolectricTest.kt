@@ -11,8 +11,10 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.AppDatabase
 import com.example.data.MacroRepository
+import com.example.dualweb.DualLayoutMode
 import com.example.dualweb.DualWebInputBridge
 import com.example.dualweb.DualWebMacroDelegate
+import com.example.dualweb.WebViewTextInputHelper
 import com.example.engine.ExecutionStatus
 import com.example.engine.MacroInterpreter
 import com.example.model.BranchAction
@@ -693,5 +695,31 @@ class ExampleRobolectricTest {
         repo.deleteTemplate(original.id)
         repo.deleteTemplate(copy.id)
         db.close()
+    }
+
+    @Test
+    fun webViewTextInputHelper_resolvesQuickTypeTargetAndEscapesJsPayload() {
+        assertEquals(1, WebViewTextInputHelper.resolveQuickTypeInitialAccount(DualLayoutMode.SINGLE_ACCT_1, 2))
+        assertEquals(2, WebViewTextInputHelper.resolveQuickTypeInitialAccount(DualLayoutMode.SINGLE_ACCT_2, 1))
+        assertEquals(1, WebViewTextInputHelper.resolveQuickTypeInitialAccount(DualLayoutMode.SPLIT_50_50, 1))
+        assertEquals(2, WebViewTextInputHelper.resolveQuickTypeInitialAccount(DualLayoutMode.SPLIT_50_50, 2))
+
+        val sampleText = "/say \"Hello\" \\ world"
+        val jsWithEnter = WebViewTextInputHelper.buildJsTextInjectionScript(
+            text = sampleText,
+            pressEnter = true
+        )
+        assertTrue(jsWithEnter.contains("var str = ${org.json.JSONObject.quote(sampleText)};"))
+        assertTrue(jsWithEnter.contains("""\"Hello\""""))
+        assertTrue(jsWithEnter.contains("""\\"""))
+        assertTrue(jsWithEnter.contains("if (true)"))
+        assertTrue(jsWithEnter.contains("key: 'Enter'"))
+
+        val jsNoEnter = WebViewTextInputHelper.buildJsTextInjectionScript(
+            text = "125000",
+            pressEnter = false
+        )
+        assertTrue(jsNoEnter.contains("""var str = "125000";"""))
+        assertTrue(jsNoEnter.contains("if (false)"))
     }
 }
